@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import DriverLayout from "../../components/driver/DriverLayout";
+import StatusBadge from "../../components/driver/StatusBadge";
 import { api } from "../../api/axios";
 import { fmtDateTime, fmtMoney } from "../../utils/format";
 
@@ -45,6 +47,7 @@ export default function RideManagement() {
     e.preventDefault();
     setErr("");
     setBusy(true);
+
     try {
       const payload = {
         vehicleId: form.vehicleId,
@@ -71,15 +74,15 @@ export default function RideManagement() {
     }
   }
 
-  function startEdit(r) {
-    setEditId(r._id);
+  function startEdit(ride) {
+    setEditId(ride._id);
     setForm({
-      vehicleId: r.vehicle?._id || r.vehicle,
-      originLabel: r.origin?.label || "",
-      destinationLabel: r.destination?.label || "",
-      departureTime: new Date(r.departureTime).toISOString().slice(0, 16),
-      pricePerSeat: r.pricePerSeat,
-      totalSeats: r.totalSeats
+      vehicleId: ride.vehicle?._id || ride.vehicle,
+      originLabel: ride.origin?.label || "",
+      destinationLabel: ride.destination?.label || "",
+      departureTime: new Date(ride.departureTime).toISOString().slice(0, 16),
+      pricePerSeat: ride.pricePerSeat,
+      totalSeats: ride.totalSeats
     });
   }
 
@@ -114,173 +117,220 @@ export default function RideManagement() {
     }
   }
 
-  const selectedVehicle = vehicles.find((v) => v._id === form.vehicleId);
+  const selectedVehicle = vehicles.find((vehicle) => vehicle._id === form.vehicleId);
   const seatMax = selectedVehicle?.seatCapacity || 1;
 
+  const activeCount = rides.filter((ride) => ["pending", "ongoing"].includes(ride.status)).length;
+  const bookedSeats = rides.reduce((sum, ride) => sum + Number(ride.bookedSeats || 0), 0);
+
   return (
-    <div className="mx-auto max-w-6xl p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold">Ride Management</h1>
-        <p className="text-sm text-slate-600">Driver-only. Create, edit, delete and manage ride status.</p>
+    <DriverLayout
+      title="Ride Management"
+      subtitle="Create, edit, and control ride status using the same backend logic you already have."
+      actions={
+        <button type="submit" form="ride-form" disabled={busy} className="driver-btn-primary">
+          {busy ? "Saving..." : editId ? "Update ride" : "Create ride"}
+        </button>
+      }
+    >
+      {err ? (
+        <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {err}
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="driver-kpi">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Total rides</div>
+          <div className="mt-3 text-3xl font-extrabold text-slate-950">{rides.length}</div>
+          <div className="mt-2 text-sm text-slate-500">All rides created in your account.</div>
+        </div>
+        <div className="driver-kpi">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Active rides</div>
+          <div className="mt-3 text-3xl font-extrabold text-slate-950">{activeCount}</div>
+          <div className="mt-2 text-sm text-slate-500">Pending and ongoing rides.</div>
+        </div>
+        <div className="driver-kpi">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Booked seats</div>
+          <div className="mt-3 text-3xl font-extrabold text-slate-950">{bookedSeats}</div>
+          <div className="mt-2 text-sm text-slate-500">Based on your current ride list.</div>
+        </div>
       </div>
 
-      {err ? <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
+      <div className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.35fr]">
+        <section className="driver-card p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xl font-bold text-slate-950">{editId ? "Edit ride" : "Create a ride"}</div>
+              <div className="text-sm text-slate-500">Your existing validation rules remain unchanged.</div>
+            </div>
+          </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-2xl border bg-white p-6 shadow-sm">
-          <div className="text-sm font-bold">{editId ? "Edit ride" : "Create ride"}</div>
-
-          <form className="mt-4 space-y-3" onSubmit={onSubmit}>
-            <label className="block">
-              <span className="text-sm font-semibold">Vehicle</span>
+          <form id="ride-form" className="mt-5 space-y-4" onSubmit={onSubmit}>
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">Vehicle</label>
               <select
-                className="mt-1 w-full rounded-xl border p-2"
+                className="driver-select"
                 value={form.vehicleId}
                 onChange={(e) => setForm((s) => ({ ...s, vehicleId: e.target.value }))}
               >
-                {vehicles.map((v) => (
-                  <option key={v._id} value={v._id}>
-                    {v.plateNumber} • {v.type} • seats {v.seatCapacity}
+                {vehicles.map((vehicle) => (
+                  <option key={vehicle._id} value={vehicle._id}>
+                    {vehicle.plateNumber} • {vehicle.type} • seats {vehicle.seatCapacity}
                   </option>
                 ))}
               </select>
-              <div className="mt-1 text-xs text-slate-500">Max seats for this vehicle: {seatMax}</div>
-            </label>
+              <div className="mt-2 text-xs text-slate-500">Max seats for this vehicle: {seatMax}</div>
+            </div>
 
-            <label className="block">
-              <span className="text-sm font-semibold">Origin</span>
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">Origin</label>
               <input
-                className="mt-1 w-full rounded-xl border p-2"
+                className="driver-input"
                 value={form.originLabel}
                 onChange={(e) => setForm((s) => ({ ...s, originLabel: e.target.value }))}
                 required
               />
-            </label>
+            </div>
 
-            <label className="block">
-              <span className="text-sm font-semibold">Destination</span>
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">Destination</label>
               <input
-                className="mt-1 w-full rounded-xl border p-2"
+                className="driver-input"
                 value={form.destinationLabel}
                 onChange={(e) => setForm((s) => ({ ...s, destinationLabel: e.target.value }))}
                 placeholder="Where are you going?"
                 required
               />
-            </label>
+            </div>
 
-            <label className="block">
-              <span className="text-sm font-semibold">Departure time</span>
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">Departure time</label>
               <input
                 type="datetime-local"
-                className="mt-1 w-full rounded-xl border p-2"
+                className="driver-input"
                 value={form.departureTime}
                 onChange={(e) => setForm((s) => ({ ...s, departureTime: e.target.value }))}
                 required
               />
-            </label>
+            </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="block">
-                <span className="text-sm font-semibold">Price per seat (LKR)</span>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">Price per seat (LKR)</label>
                 <input
                   type="number"
                   min={0}
-                  className="mt-1 w-full rounded-xl border p-2"
+                  className="driver-input"
                   value={form.pricePerSeat}
                   onChange={(e) => setForm((s) => ({ ...s, pricePerSeat: e.target.value }))}
                   required
                 />
-              </label>
+              </div>
 
-              <label className="block">
-                <span className="text-sm font-semibold">Seats offered</span>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">Seats offered</label>
                 <input
                   type="number"
                   min={1}
                   max={seatMax}
-                  className="mt-1 w-full rounded-xl border p-2"
+                  className="driver-input"
                   value={form.totalSeats}
                   onChange={(e) => setForm((s) => ({ ...s, totalSeats: e.target.value }))}
                   required
                 />
-              </label>
+              </div>
             </div>
 
-            <div className="flex gap-2">
-              <button
-                disabled={busy}
-                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-              >
-                {busy ? "Saving..." : editId ? "Update" : "Create"}
+            {editId ? (
+              <button type="button" className="driver-btn-secondary w-full" onClick={() => setEditId(null)}>
+                Cancel edit
               </button>
-
-              {editId ? (
-                <button type="button" className="rounded-xl border px-4 py-2 text-sm font-semibold" onClick={() => setEditId(null)}>
-                  Cancel
-                </button>
-              ) : null}
-            </div>
+            ) : null}
           </form>
-        </div>
+        </section>
 
-        <div className="rounded-2xl border bg-white p-6 shadow-sm">
-          <div className="text-sm font-bold">Your rides</div>
+        <section className="driver-card p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xl font-bold text-slate-950">Your rides</div>
+              <div className="text-sm text-slate-500">Status transitions are still enforced by the backend.</div>
+            </div>
+          </div>
 
-          <div className="mt-4 space-y-3">
-            {sorted.map((r) => (
-              <div key={r._id} className="rounded-xl border p-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="mt-5 space-y-4">
+            {sorted.map((ride) => (
+              <div key={ride._id} className="rounded-[24px] border border-slate-200 p-5">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div>
-                    <div className="font-semibold">{r.origin?.label} → {r.destination?.label}</div>
-                    <div className="mt-1 text-xs text-slate-600">
-                      Departs: {fmtDateTime(r.departureTime)} • Vehicle: {r.vehicle?.plateNumber || "-"}
+                    <div className="text-lg font-bold text-slate-950">
+                      {ride.origin?.label} → {ride.destination?.label}
                     </div>
-                    <div className="mt-1 text-xs text-slate-600">
-                      Seats: {r.availableSeats}/{r.totalSeats} • Price: {fmtMoney(r.pricePerSeat)} • Booked: {r.bookedSeats}
+                    <div className="mt-1 text-sm text-slate-500">
+                      Departs {fmtDateTime(ride.departureTime)} • Vehicle {ride.vehicle?.plateNumber || "-"}
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-3 text-sm">
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+                        Seats {ride.availableSeats}/{ride.totalSeats}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+                        Price {fmtMoney(ride.pricePerSeat)}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+                        Booked {ride.bookedSeats}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">
-                      {String(r.status).toUpperCase()}
-                    </span>
+                  <StatusBadge status={ride.status} />
+                </div>
 
-                    <button className="rounded-xl border px-3 py-1 text-sm font-semibold hover:bg-slate-50" onClick={() => startEdit(r)}>
+                <div className="driver-divider my-4" />
+
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" className="driver-btn-secondary" onClick={() => startEdit(ride)}>
                       Edit
                     </button>
-                    <button className="rounded-xl bg-red-600 px-3 py-1 text-sm font-semibold text-white hover:bg-red-500" onClick={() => onDelete(r._id)}>
+                    <button type="button" className="driver-btn-secondary" onClick={() => onDelete(ride._id)}>
                       Delete
                     </button>
-
-                    <div className="flex gap-1">
-                      {STATUS.map((s) => (
-                        <button
-                          key={s}
-                          className="rounded-xl border px-2 py-1 text-xs font-semibold hover:bg-slate-50"
-                          onClick={() => setStatus(r._id, s)}
-                          title="Transition rules enforced by backend"
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
-
-                    <button
-                      className="rounded-xl bg-slate-900 px-3 py-1 text-sm font-semibold text-white hover:bg-slate-800"
-                      onClick={() => bookSeat(r._id)}
-                      title="Simulation endpoint to test seat reduction"
-                    >
+                    <button type="button" className="driver-btn-accent" onClick={() => bookSeat(ride._id)}>
                       +1 booked
                     </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {STATUS.map((status) => (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => setStatus(ride._id, status)}
+                        className={[
+                          "rounded-2xl px-3 py-2 text-xs font-semibold transition",
+                          ride.status === status
+                            ? "bg-slate-950 text-white"
+                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        ].join(" ")}
+                        title="Transition rules are enforced by backend"
+                      >
+                        {status}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
             ))}
 
-            {sorted.length === 0 ? <div className="text-sm text-slate-500">No rides yet. Create your first ride.</div> : null}
+            {sorted.length === 0 ? (
+              <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                No rides yet. Create your first ride.
+              </div>
+            ) : null}
           </div>
-        </div>
+        </section>
       </div>
-    </div>
+    </DriverLayout>
   );
 }
