@@ -18,6 +18,8 @@ import DirectionalHire from "./pages/directional-hire/DirectionalHire";
 import Unauthorized from "./pages/common/Unauthorized";
 import NotFound from "./pages/common/NotFound";
 
+import SafetyPage from "./pages/SafetyPage";
+import PaymentPage from "./pages/PaymentPage";
 export default function App() {
   return (
     <div className="min-h-screen">
@@ -28,6 +30,7 @@ export default function App() {
         <Route path="/auth/register" element={<Register />} />
         <Route path="/unauthorized" element={<Unauthorized />} />
 
+        {/* Admin Routes */}
         <Route
           path="/admin/dashboard"
           element={
@@ -37,6 +40,7 @@ export default function App() {
           }
         />
 
+        {/* Driver Routes */}
         <Route
           path="/driver/dashboard"
           element={
@@ -45,7 +49,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/driver/vehicles"
           element={
@@ -72,7 +75,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/driver/directional-hire"
           element={
@@ -82,6 +84,7 @@ export default function App() {
           }
         />
 
+        {/* Passenger Routes */}
         <Route
           path="/home"
           element={
@@ -90,7 +93,24 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/payments"
+          element={
+            <ProtectedRoute roles={["user"]}>
+              <PaymentPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/safety"
+          element={
+            <ProtectedRoute roles={["user"]}>
+              <SafetyPage />
+            </ProtectedRoute>
+          }
+        />
 
+        {/* Compatibility redirects */}
         <Route path="/dashboard" element={<Navigate to="/driver/dashboard" replace />} />
         <Route path="/vehicles" element={<Navigate to="/driver/vehicles" replace />} />
         <Route path="/rides" element={<Navigate to="/driver/rides" replace />} />

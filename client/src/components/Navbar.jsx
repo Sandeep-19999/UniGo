@@ -38,7 +38,11 @@ export default function Navbar() {
           {user?.role === "admin" ? (
             <NavItem to="/admin/dashboard">Admin Dashboard</NavItem>
           ) : user?.role === "user" ? (
-            <NavItem to="/home">Home</NavItem>
+            <>
+              <NavItem to="/home">Home</NavItem>
+              <NavItem to="/payments">Payments</NavItem>
+              <NavItem to="/safety">Safety</NavItem>
+            </>
           ) : null}
         </nav>
 
