@@ -1,9 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import DriverLayout from "../../../components/driver/DriverLayout";
-import StatusBadge from "../../../components/driver/StatusBadge";
-import LiveDriverMap from "../../../components/driver/LiveDriverMap";
+import L from "leaflet";
+import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import { api } from "../../../api/axios";
+import { useAuth } from "../../../context/AuthContext";
+
+const FALLBACK_CENTER = [6.9068, 79.8706];
+
+const driverHomeIcon = L.divIcon({
+  className: "driver-home-marker-wrap",
+  html: `
+    <div class="driver-home-marker-pin">
+      <div class="driver-home-marker-arrow"></div>
+    </div>
+  `,
+  iconSize: [56, 56],
+  iconAnchor: [28, 28],
+});
 
 function formatMoney(value) {
   return `LKR ${Number(value || 0).toLocaleString("en-LK", {
@@ -12,180 +25,199 @@ function formatMoney(value) {
   })}`;
 }
 
-export default function DriverDashboard() {
-  const [vehicles, setVehicles] = useState([]);
-  const [rides, setRides] = useState([]);
-  const [earnings, setEarnings] = useState({
-    totalEarnings: 0,
-    totalCompletedRides: 0,
-  });
+function initials(name = "Driver") {
+  return name
+    .split(" ")
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("");
+}
 
-  const loadedRef = useRef(false);
+function DashboardMapBridge({ center, followMe, mapRef }) {
+  const map = useMap();
 
   useEffect(() => {
-    if (loadedRef.current) return;
-    loadedRef.current = true;
+    mapRef.current = map;
+  }, [map, mapRef]);
 
+  useEffect(() => {
+    if (center && followMe) {
+      map.flyTo(center, 14, { duration: 1.2 });
+    }
+  }, [center, followMe, map]);
+
+  return null;
+}
+
+export default function DriverDashboard() {
+  const { user } = useAuth();
+  const mapRef = useRef(null);
+  const watchIdRef = useRef(null);
+
+  const [isOnline, setIsOnline] = useState(false);
+  const [followMe, setFollowMe] = useState(true);
+  const [position, setPosition] = useState(null);
+  const [geoError, setGeoError] = useState("");
+  const [earnings, setEarnings] = useState({ totalEarnings: 0, totalCompletedRides: 0 });
+  const [rides, setRides] = useState([]);
+
+  useEffect(() => {
     const controller = new AbortController();
 
     (async () => {
-      const [v, r, e] = await Promise.all([
-        api.get("/driver/vehicles", { signal: controller.signal }),
-        api.get("/driver/rides", { signal: controller.signal }),
-        api.get("/driver/rides/earnings/summary", { signal: controller.signal }),
-      ]);
+      try {
+        const [earningsRes, ridesRes] = await Promise.all([
+          api.get("/driver/rides/earnings/summary", { signal: controller.signal }),
+          api.get("/driver/rides", { signal: controller.signal }),
+        ]);
 
-      setVehicles(v.data.vehicles || []);
-      setRides(r.data.rides || []);
-      setEarnings(e.data || { totalEarnings: 0, totalCompletedRides: 0 });
-    })().catch(() => {});
+        setEarnings(earningsRes.data || { totalEarnings: 0, totalCompletedRides: 0 });
+        setRides(ridesRes.data?.rides || []);
+      } catch {
+        // keep UI alive even if dashboard stats fail
+      }
+    })();
 
     return () => controller.abort();
   }, []);
 
-  const activeRides = useMemo(
+  useEffect(() => {
+    function stopTracking() {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    }
+
+    if (!isOnline) {
+      stopTracking();
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setGeoError("Geolocation is not supported in this browser.");
+      return;
+    }
+
+    setGeoError("");
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        setPosition([pos.coords.latitude, pos.coords.longitude]);
+      },
+      () => {
+        setGeoError("Location access failed. Please allow browser location.");
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+        timeout: 15000,
+      }
+    );
+
+    return stopTracking;
+  }, [isOnline]);
+
+  const center = position || FALLBACK_CENTER;
+
+  const activeRideCount = useMemo(
     () => rides.filter((ride) => ["pending", "ongoing"].includes(ride.status)).length,
     [rides]
   );
 
-  const upcomingRides = useMemo(() => {
-    return rides
-      .filter((ride) => ["pending", "ongoing"].includes(ride.status))
-      .slice()
-      .sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime))
-      .slice(0, 4);
-  }, [rides]);
+  function recenterMap() {
+    if (mapRef.current && position) {
+      mapRef.current.flyTo(position, 14, { duration: 1.1 });
+    }
+  }
 
   return (
-    <DriverLayout
-      title="Driver Dashboard"
-      subtitle="Clean live-location dashboard for your daily ride activity."
-      actions={
-        <>
-          <Link to="/driver/rides" className="driver-btn-secondary">
-            Manage rides
-          </Link>
-          <Link to="/driver/vehicles" className="driver-btn-primary">
-            Manage vehicles
-          </Link>
-        </>
-      }
-    >
-      <div className="space-y-6">
-        <LiveDriverMap
-          driverName="Driver"
-          earningsTotal={earnings.totalEarnings || 0}
+    <div className="driver-home-screen">
+      <MapContainer center={center} zoom={8} scrollWheelZoom className="driver-home-map">
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="driver-kpi">
-            <div className="driver-kpi-label">Vehicles</div>
-            <div className="driver-kpi-value">{vehicles.length}</div>
-            <div className="driver-kpi-hint">Your registered vehicles</div>
-          </div>
+        <DashboardMapBridge center={center} followMe={followMe} mapRef={mapRef} />
 
-          <div className="driver-kpi">
-            <div className="driver-kpi-label">Active rides</div>
-            <div className="driver-kpi-value">{activeRides}</div>
-            <div className="driver-kpi-hint">Pending and ongoing</div>
-          </div>
+        {position ? <Marker position={position} icon={driverHomeIcon} /> : null}
+      </MapContainer>
 
-          <div className="driver-kpi">
-            <div className="driver-kpi-label">Completed earnings</div>
-            <div className="driver-kpi-value">{formatMoney(earnings.totalEarnings || 0)}</div>
-            <div className="driver-kpi-hint">
-              {earnings.totalCompletedRides || 0} completed rides
-            </div>
-          </div>
+      <div className="driver-home-topbar">
+        <div className="driver-home-avatar-pill">
+          <div className="driver-home-avatar">{initials(user?.name || "Driver")}</div>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.25fr_0.85fr]">
-          <section className="driver-card p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-bold text-slate-950">Upcoming rides</h2>
-                <p className="text-sm text-slate-500">
-                  Your nearest scheduled rides
-                </p>
-              </div>
-              <Link to="/driver/history" className="driver-btn-secondary">
-                View history
-              </Link>
-            </div>
-
-            <div className="space-y-4">
-              {upcomingRides.length > 0 ? (
-                upcomingRides.map((ride) => (
-                  <div key={ride._id} className="rounded-[24px] border border-slate-200 p-4">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <div className="text-lg font-bold text-slate-950">
-                          {ride.origin?.label} → {ride.destination?.label}
-                        </div>
-                        <div className="mt-1 text-sm text-slate-500">
-                          {new Date(ride.departureTime).toLocaleString()}
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2 text-sm">
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
-                            Seats {ride.availableSeats}/{ride.totalSeats}
-                          </span>
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
-                            Vehicle {ride.vehicle?.plateNumber || "-"}
-                          </span>
-                        </div>
-                      </div>
-
-                      <StatusBadge status={ride.status} />
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
-                  No active rides yet.
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="driver-card p-6">
-            <div className="mb-4">
-              <h2 className="text-xl font-bold text-slate-950">Quick actions</h2>
-              <p className="text-sm text-slate-500">
-                Simple shortcuts for daily driver tasks
-              </p>
-            </div>
-
-            <div className="grid gap-3">
-              <Link to="/driver/rides" className="driver-btn-secondary justify-between">
-                <span>Create or edit rides</span>
-                <span>→</span>
-              </Link>
-
-              <Link to="/driver/vehicles" className="driver-btn-secondary justify-between">
-                <span>Manage vehicle list</span>
-                <span>→</span>
-              </Link>
-
-              <Link to="/driver/history" className="driver-btn-secondary justify-between">
-                <span>Check ride history</span>
-                <span>→</span>
-              </Link>
-
-              <Link to="/driver/directional-hire" className="driver-btn-primary justify-between">
-                <span>Open directional hire</span>
-                <span>→</span>
-              </Link>
-            </div>
-
-            <div className="mt-5 rounded-[24px] bg-slate-50 p-4">
-              <div className="text-sm font-semibold text-slate-800">Small note</div>
-              <div className="mt-1 text-sm text-slate-500">
-                This map is now live because it watches your position continuously.
-              </div>
-            </div>
-          </section>
-        </div>
+        <div className="driver-home-earnings-pill">{formatMoney(earnings.totalEarnings || 0)}</div>
       </div>
-    </DriverLayout>
+
+      <div className="driver-home-right-buttons">
+        <button
+          type="button"
+          className="driver-home-fab"
+          onClick={() => setFollowMe((prev) => !prev)}
+          title="Toggle follow mode"
+        >
+          {followMe ? "◎" : "◌"}
+        </button>
+
+        <button
+          type="button"
+          className="driver-home-fab"
+          onClick={recenterMap}
+          title="Re-center"
+        >
+          ⌖
+        </button>
+      </div>
+
+      <div className="driver-home-go-wrap">
+        <button
+          type="button"
+          className={`driver-home-go-btn ${isOnline ? "is-online" : ""}`}
+          onClick={() => setIsOnline((prev) => !prev)}
+        >
+          {isOnline ? "On" : "Go"}
+        </button>
+      </div>
+
+      <div className="driver-home-sheet">
+        <div className="driver-home-sheet-handle" />
+
+        <div className={`driver-home-sheet-status ${isOnline ? "online" : "offline"}`}>
+          <span className="driver-home-status-dot" />
+          {isOnline ? "Online" : "Offline"}
+        </div>
+
+        <div className="driver-home-sheet-links">
+          <Link to="/driver/rides" className="driver-home-sheet-link">
+            Rides
+          </Link>
+          <Link to="/driver/vehicles" className="driver-home-sheet-link">
+            Vehicles
+          </Link>
+          <Link to="/driver/history" className="driver-home-sheet-link">
+            History
+          </Link>
+          <Link to="/driver/directional-hire" className="driver-home-sheet-link">
+            Hire
+          </Link>
+        </div>
+
+        <div className="driver-home-mini-stats">
+          <div className="driver-home-mini-card">
+            <span>Active rides</span>
+            <strong>{activeRideCount}</strong>
+          </div>
+          <div className="driver-home-mini-card">
+            <span>Completed</span>
+            <strong>{earnings.totalCompletedRides || 0}</strong>
+          </div>
+        </div>
+
+        {geoError ? <div className="driver-home-error">{geoError}</div> : null}
+      </div>
+    </div>
   );
 }
