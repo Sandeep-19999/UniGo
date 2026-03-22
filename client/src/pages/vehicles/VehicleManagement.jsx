@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import DriverLayout from "../../components/driver/DriverLayout";
 import { api } from "../../api/axios";
 
 const TYPE_LABELS = { bike: "Bike", car: "Car", van: "Van", mini_van: "Mini Van" };
@@ -37,12 +38,14 @@ export default function VehicleManagement() {
     e.preventDefault();
     setErr("");
     setBusy(true);
+
     try {
       const payload = {
         type: form.type,
         plateNumber: form.plateNumber.trim(),
         seatCapacity: Number(form.seatCapacity)
       };
+
       if (!payload.plateNumber) throw new Error("Plate number is required.");
 
       if (editId) await api.patch(`/driver/vehicles/${editId}`, payload);
@@ -58,9 +61,9 @@ export default function VehicleManagement() {
     }
   }
 
-  function startEdit(v) {
-    setEditId(v._id);
-    setForm({ type: v.type, plateNumber: v.plateNumber, seatCapacity: v.seatCapacity });
+  function startEdit(vehicle) {
+    setEditId(vehicle._id);
+    setForm({ type: vehicle.type, plateNumber: vehicle.plateNumber, seatCapacity: vehicle.seatCapacity });
   }
 
   async function onDelete(id) {
@@ -74,31 +77,59 @@ export default function VehicleManagement() {
     }
   }
 
+  const totalSeats = vehicles.reduce((sum, vehicle) => sum + Number(vehicle.seatCapacity || 0), 0);
+
   return (
-    <div className="mx-auto max-w-6xl p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold">Vehicle Management</h1>
-        <p className="text-sm text-slate-600">Driver-only. Seat policies are enforced on the backend.</p>
+    <DriverLayout
+      title="Vehicle Management"
+      subtitle="A cleaner fleet screen that keeps your original API calls and validation flow untouched."
+      actions={
+        <button type="submit" form="vehicle-form" disabled={busy} className="driver-btn-primary">
+          {busy ? "Saving..." : editId ? "Update vehicle" : "Add vehicle"}
+        </button>
+      }
+    >
+      {err ? (
+        <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {err}
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="driver-kpi">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Fleet size</div>
+          <div className="mt-3 text-3xl font-extrabold text-slate-950">{vehicles.length}</div>
+          <div className="mt-2 text-sm text-slate-500">Vehicles currently registered.</div>
+        </div>
+        <div className="driver-kpi">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Total seat capacity</div>
+          <div className="mt-3 text-3xl font-extrabold text-slate-950">{totalSeats}</div>
+          <div className="mt-2 text-sm text-slate-500">Combined across all vehicles.</div>
+        </div>
+        <div className="driver-kpi">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Policy note</div>
+          <div className="mt-3 text-lg font-bold text-slate-950">Backend enforced</div>
+          <div className="mt-2 text-sm text-slate-500">Seat rules stay on the server exactly as before.</div>
+        </div>
       </div>
 
-      {err ? <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
+      <div className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.35fr]">
+        <section className="driver-card p-6">
+          <div className="text-xl font-bold text-slate-950">{editId ? "Edit vehicle" : "Add a vehicle"}</div>
+          <div className="mt-1 text-sm text-slate-500">Use the same existing endpoints with a better UI shell.</div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-2xl border bg-white p-6 shadow-sm">
-          <div className="text-sm font-bold">{editId ? "Edit vehicle" : "Add vehicle"}</div>
-
-          <form className="mt-4 space-y-3" onSubmit={onSubmit}>
-            <label className="block">
-              <span className="text-sm font-semibold">Vehicle type</span>
+          <form id="vehicle-form" className="mt-5 space-y-4" onSubmit={onSubmit}>
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">Vehicle type</label>
               <select
-                className="mt-1 w-full rounded-xl border p-2"
+                className="driver-select"
                 value={form.type}
                 onChange={(e) => {
-                  const t = e.target.value;
+                  const type = e.target.value;
                   setForm((s) => ({
                     ...s,
-                    type: t,
-                    seatCapacity: t === "bike" ? 1 : t === "car" ? 4 : t === "van" ? 8 : 10
+                    type,
+                    seatCapacity: type === "bike" ? 1 : type === "car" ? 4 : type === "van" ? 8 : 10
                   }));
                 }}
               >
@@ -107,94 +138,89 @@ export default function VehicleManagement() {
                 <option value="van">Van</option>
                 <option value="mini_van">Mini Van</option>
               </select>
-              <div className="mt-1 text-xs text-slate-500">{seatHint(form.type)}</div>
-            </label>
+              <div className="mt-2 text-xs text-slate-500">{seatHint(form.type)}</div>
+            </div>
 
-            <label className="block">
-              <span className="text-sm font-semibold">Plate number</span>
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">Plate number</label>
               <input
-                className="mt-1 w-full rounded-xl border p-2"
+                className="driver-input"
                 value={form.plateNumber}
                 onChange={(e) => setForm((s) => ({ ...s, plateNumber: e.target.value }))}
                 placeholder="ABC-1234"
                 required
               />
-            </label>
+            </div>
 
-            <label className="block">
-              <span className="text-sm font-semibold">Seat capacity</span>
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">Seat capacity</label>
               <input
                 type="number"
-                className="mt-1 w-full rounded-xl border p-2"
+                className="driver-input"
                 value={form.seatCapacity}
                 onChange={(e) => setForm((s) => ({ ...s, seatCapacity: e.target.value }))}
                 min={1}
                 required
               />
-            </label>
-
-            <div className="flex gap-2">
-              <button
-                disabled={busy}
-                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-              >
-                {busy ? "Saving..." : editId ? "Update" : "Add"}
-              </button>
-
-              {editId ? (
-                <button
-                  type="button"
-                  className="rounded-xl border px-4 py-2 text-sm font-semibold"
-                  onClick={() => {
-                    setEditId(null);
-                    setForm({ type: "car", plateNumber: "", seatCapacity: 4 });
-                  }}
-                >
-                  Cancel
-                </button>
-              ) : null}
             </div>
+
+            {editId ? (
+              <button
+                type="button"
+                className="driver-btn-secondary w-full"
+                onClick={() => {
+                  setEditId(null);
+                  setForm({ type: "car", plateNumber: "", seatCapacity: 4 });
+                }}
+              >
+                Cancel edit
+              </button>
+            ) : null}
           </form>
-        </div>
+        </section>
 
-        <div className="rounded-2xl border bg-white p-6 shadow-sm">
-          <div className="text-sm font-bold">Your vehicles</div>
+        <section className="driver-card p-6">
+          <div className="text-xl font-bold text-slate-950">Your vehicles</div>
+          <div className="mt-1 text-sm text-slate-500">A more polished fleet list with the same behavior underneath.</div>
 
-          <div className="mt-4 space-y-3">
-            {sorted.map((v) => (
-              <div key={v._id} className="rounded-xl border p-3">
-                <div className="flex items-center justify-between gap-3">
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            {sorted.map((vehicle) => (
+              <div key={vehicle._id} className="rounded-[24px] border border-slate-200 p-5">
+                <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="font-semibold">
-                      {TYPE_LABELS[v.type] || v.type} • {v.plateNumber}
+                    <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                      {TYPE_LABELS[vehicle.type] || vehicle.type}
                     </div>
-                    <div className="text-xs text-slate-600">Seats: {v.seatCapacity}</div>
+                    <div className="mt-3 text-lg font-bold text-slate-950">{vehicle.plateNumber}</div>
+                    <div className="mt-1 text-sm text-slate-500">Seat capacity {vehicle.seatCapacity}</div>
                   </div>
 
-                  <div className="flex gap-2">
-                    <button
-                      className="rounded-xl border px-3 py-1 text-sm font-semibold hover:bg-slate-50"
-                      onClick={() => startEdit(v)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="rounded-xl bg-red-600 px-3 py-1 text-sm font-semibold text-white hover:bg-red-500"
-                      onClick={() => onDelete(v._id)}
-                    >
-                      Delete
-                    </button>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+                    🚘
                   </div>
+                </div>
+
+                <div className="driver-divider my-4" />
+
+                <div className="flex gap-2">
+                  <button type="button" className="driver-btn-secondary flex-1" onClick={() => startEdit(vehicle)}>
+                    Edit
+                  </button>
+                  <button type="button" className="driver-btn-primary flex-1" onClick={() => onDelete(vehicle._id)}>
+                    Delete
+                  </button>
                 </div>
               </div>
             ))}
 
             {sorted.length === 0 ? (
-              <div className="text-sm text-slate-500">No vehicles yet. Add one to start creating rides.</div>
+              <div className="col-span-full rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                No vehicles yet. Add one to start creating rides.
+              </div>
             ) : null}
           </div>
-        </div>
+        </section>
       </div>
-    </div>
+    </DriverLayout>
   );
 }

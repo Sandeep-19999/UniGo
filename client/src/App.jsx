@@ -13,6 +13,7 @@ import PassengerHome from "./pages/users/passenger/PassengerHome";
 import VehicleManagement from "./pages/vehicles/VehicleManagement";
 import RideManagement from "./pages/rides/RideManagement";
 import RideHistory from "./pages/rides/RideHistory";
+import DirectionalHire from "./pages/directional-hire/DirectionalHire";
 
 import Unauthorized from "./pages/common/Unauthorized";
 import NotFound from "./pages/common/NotFound";
@@ -25,10 +26,8 @@ export default function App() {
       <Navbar />
       <Routes>
         <Route path="/" element={<Landing />} />
-
         <Route path="/auth/login" element={<Login />} />
         <Route path="/auth/register" element={<Register />} />
-
         <Route path="/unauthorized" element={<Unauthorized />} />
 
         {/* Admin Routes */}
@@ -58,6 +57,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/driver/rides"
           element={
@@ -66,11 +66,20 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/driver/history"
           element={
             <ProtectedRoute roles={["driver"]}>
               <RideHistory />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/driver/directional-hire"
+          element={
+            <ProtectedRoute roles={["driver"]}>
+              <DirectionalHire />
             </ProtectedRoute>
           }
         />
@@ -106,6 +115,7 @@ export default function App() {
         <Route path="/vehicles" element={<Navigate to="/driver/vehicles" replace />} />
         <Route path="/rides" element={<Navigate to="/driver/rides" replace />} />
         <Route path="/history" element={<Navigate to="/driver/history" replace />} />
+        <Route path="/directional-hire" element={<Navigate to="/driver/directional-hire" replace />} />
 
         <Route path="*" element={<NotFound />} />
       </Routes>

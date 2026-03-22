@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import DriverLayout from "../../components/driver/DriverLayout";
+import StatusBadge from "../../components/driver/StatusBadge";
 import { api } from "../../api/axios";
 import { fmtDateTime, fmtMoney } from "../../utils/format";
 
@@ -14,110 +16,131 @@ export default function RideHistory() {
     loadedRef.current = true;
 
     (async () => {
-      const [h, e] = await Promise.all([api.get("/driver/rides/history"), api.get("/driver/rides/earnings/summary")]);
+      const [h, e] = await Promise.all([
+        api.get("/driver/rides/history"),
+        api.get("/driver/rides/earnings/summary")
+      ]);
       setRides(h.data.rides || []);
       setEarnings(e.data || { totalEarnings: 0, totalCompletedRides: 0, items: [] });
     })().catch((e) => setErr(e?.response?.data?.message || "Failed to load history."));
   }, []);
 
-  const cancelled = useMemo(() => rides.filter((r) => r.status === "cancelled").length, [rides]);
+  const cancelled = useMemo(() => rides.filter((ride) => ride.status === "cancelled").length, [rides]);
 
   return (
-    <div className="mx-auto max-w-6xl p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold">Ride History</h1>
-        <p className="text-sm text-slate-600">Completed and cancelled rides with an earnings snapshot.</p>
+    <DriverLayout
+      title="Ride History"
+      subtitle="Completed and cancelled rides with a more dashboard-style presentation and the same backend data."
+    >
+      {err ? (
+        <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {err}
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="driver-kpi">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Completed</div>
+          <div className="mt-3 text-3xl font-extrabold text-slate-950">{earnings.totalCompletedRides || 0}</div>
+          <div className="mt-2 text-sm text-slate-500">Successfully completed rides.</div>
+        </div>
+        <div className="driver-kpi">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Cancelled</div>
+          <div className="mt-3 text-3xl font-extrabold text-slate-950">{cancelled}</div>
+          <div className="mt-2 text-sm text-slate-500">Cancelled rides in your history.</div>
+        </div>
+        <div className="driver-kpi">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Total earnings</div>
+          <div className="mt-3 text-3xl font-extrabold text-slate-950">{fmtMoney(earnings.totalEarnings || 0)}</div>
+          <div className="mt-2 text-sm text-slate-500">Pulled from the existing summary endpoint.</div>
+        </div>
       </div>
 
-      {err ? <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
+      <div className="mt-6 space-y-6">
+        <section className="driver-table-wrap">
+          <div className="border-b border-slate-200/80 px-6 py-5">
+            <div className="text-xl font-bold text-slate-950">History list</div>
+            <div className="mt-1 text-sm text-slate-500">Completed and cancelled ride records.</div>
+          </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-2xl border bg-white p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Completed</div>
-          <div className="mt-2 text-2xl font-extrabold">{earnings.totalCompletedRides || 0}</div>
-        </div>
-        <div className="rounded-2xl border bg-white p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cancelled</div>
-          <div className="mt-2 text-2xl font-extrabold">{cancelled}</div>
-        </div>
-        <div className="rounded-2xl border bg-white p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total earnings</div>
-          <div className="mt-2 text-2xl font-extrabold">{fmtMoney(earnings.totalEarnings || 0)}</div>
-        </div>
-      </div>
-
-      <div className="rounded-2xl border bg-white p-6 shadow-sm">
-        <div className="text-sm font-bold">History list</div>
-
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b bg-slate-50">
-              <tr>
-                <th className="px-3 py-2">Departure</th>
-                <th className="px-3 py-2">Route</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Vehicle</th>
-                <th className="px-3 py-2">Seats</th>
-                <th className="px-3 py-2">Price/seat</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rides.map((r) => (
-                <tr key={r._id} className="border-b">
-                  <td className="px-3 py-2">{fmtDateTime(r.departureTime)}</td>
-                  <td className="px-3 py-2">{r.origin?.label} → {r.destination?.label}</td>
-                  <td className="px-3 py-2">
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">{String(r.status).toUpperCase()}</span>
-                  </td>
-                  <td className="px-3 py-2">{r.vehicle?.plateNumber || "-"}</td>
-                  <td className="px-3 py-2">{r.availableSeats}/{r.totalSeats}</td>
-                  <td className="px-3 py-2">{fmtMoney(r.pricePerSeat)}</td>
-                </tr>
-              ))}
-              {rides.length === 0 ? (
+          <div className="overflow-x-auto">
+            <table className="driver-table">
+              <thead>
                 <tr>
-                  <td className="px-3 py-6 text-slate-500" colSpan={6}>
-                    No history yet. Complete or cancel a ride to see it here.
-                  </td>
+                  <th>Departure</th>
+                  <th>Route</th>
+                  <th>Status</th>
+                  <th>Vehicle</th>
+                  <th>Seats</th>
+                  <th>Price/seat</th>
                 </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              </thead>
+              <tbody>
+                {rides.map((ride) => (
+                  <tr key={ride._id} className="border-t border-slate-100">
+                    <td>{fmtDateTime(ride.departureTime)}</td>
+                    <td>{ride.origin?.label} → {ride.destination?.label}</td>
+                    <td>
+                      <StatusBadge status={ride.status} />
+                    </td>
+                    <td>{ride.vehicle?.plateNumber || "-"}</td>
+                    <td>{ride.availableSeats}/{ride.totalSeats}</td>
+                    <td>{fmtMoney(ride.pricePerSeat)}</td>
+                  </tr>
+                ))}
 
-      <div className="rounded-2xl border bg-white p-6 shadow-sm">
-        <div className="text-sm font-bold">Earnings breakdown</div>
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b bg-slate-50">
-              <tr>
-                <th className="px-3 py-2">Departure</th>
-                <th className="px-3 py-2">Route</th>
-                <th className="px-3 py-2">Booked seats</th>
-                <th className="px-3 py-2">Price/seat</th>
-                <th className="px-3 py-2">Earnings</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(earnings.items || []).map((x) => (
-                <tr key={x.rideId} className="border-b">
-                  <td className="px-3 py-2">{fmtDateTime(x.departureTime)}</td>
-                  <td className="px-3 py-2">{x.from} → {x.to}</td>
-                  <td className="px-3 py-2">{x.bookedSeats}</td>
-                  <td className="px-3 py-2">{fmtMoney(x.pricePerSeat)}</td>
-                  <td className="px-3 py-2 font-semibold">{fmtMoney(x.earnings)}</td>
-                </tr>
-              ))}
-              {(earnings.items || []).length === 0 ? (
+                {rides.length === 0 ? (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-slate-500" colSpan={6}>
+                      No history yet. Complete or cancel a ride to see it here.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="driver-table-wrap">
+          <div className="border-b border-slate-200/80 px-6 py-5">
+            <div className="text-xl font-bold text-slate-950">Earnings breakdown</div>
+            <div className="mt-1 text-sm text-slate-500">Calculated rows from your current earnings summary response.</div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="driver-table">
+              <thead>
                 <tr>
-                  <td className="px-3 py-6 text-slate-500" colSpan={5}>No completed rides yet.</td>
+                  <th>Departure</th>
+                  <th>Route</th>
+                  <th>Booked seats</th>
+                  <th>Price/seat</th>
+                  <th>Earnings</th>
                 </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {(earnings.items || []).map((item) => (
+                  <tr key={item.rideId} className="border-t border-slate-100">
+                    <td>{fmtDateTime(item.departureTime)}</td>
+                    <td>{item.from} → {item.to}</td>
+                    <td>{item.bookedSeats}</td>
+                    <td>{fmtMoney(item.pricePerSeat)}</td>
+                    <td className="font-semibold text-slate-950">{fmtMoney(item.earnings)}</td>
+                  </tr>
+                ))}
+
+                {(earnings.items || []).length === 0 ? (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
+                      No completed rides yet.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
-    </div>
+    </DriverLayout>
   );
 }

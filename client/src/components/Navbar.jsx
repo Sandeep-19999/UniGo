@@ -23,7 +23,9 @@ export default function Navbar() {
   const navigate = useNavigate();
 
   const hideOn = ["/", "/auth/login", "/auth/register"];
-  if (hideOn.includes(location.pathname)) return null;
+  const hideNavbar = hideOn.includes(location.pathname) || location.pathname.startsWith("/driver/");
+
+  if (hideNavbar) return null;
 
   return (
     <header className="sticky top-0 z-20 border-b bg-white/80 backdrop-blur">
@@ -35,13 +37,6 @@ export default function Navbar() {
         <nav className="flex items-center gap-2">
           {user?.role === "admin" ? (
             <NavItem to="/admin/dashboard">Admin Dashboard</NavItem>
-          ) : user?.role === "driver" ? (
-            <>
-              <NavItem to="/driver/dashboard">Dashboard</NavItem>
-              <NavItem to="/driver/vehicles">Vehicles</NavItem>
-              <NavItem to="/driver/rides">Rides</NavItem>
-              <NavItem to="/driver/history">History</NavItem>
-            </>
           ) : user?.role === "user" ? (
             <>
               <NavItem to="/home">Home</NavItem>
