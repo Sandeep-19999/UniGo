@@ -17,6 +17,8 @@ import RideHistory from "./pages/rides/RideHistory";
 import Unauthorized from "./pages/common/Unauthorized";
 import NotFound from "./pages/common/NotFound";
 
+import SafetyPage from "./pages/SafetyPage";
+import PaymentPage from "./pages/PaymentPage";
 export default function App() {
   return (
     <div className="min-h-screen">
@@ -29,6 +31,7 @@ export default function App() {
 
         <Route path="/unauthorized" element={<Unauthorized />} />
 
+        {/* Admin Routes */}
         <Route
           path="/admin/dashboard"
           element={
@@ -38,6 +41,7 @@ export default function App() {
           }
         />
 
+        {/* Driver Routes */}
         <Route
           path="/driver/dashboard"
           element={
@@ -46,16 +50,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
-        <Route
-          path="/home"
-          element={
-            <ProtectedRoute roles={["user"]}>
-              <PassengerHome />
-            </ProtectedRoute>
-          }
-        />
-
         <Route
           path="/driver/vehicles"
           element={
@@ -77,6 +71,32 @@ export default function App() {
           element={
             <ProtectedRoute roles={["driver"]}>
               <RideHistory />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Passenger Routes */}
+        <Route
+          path="/home"
+          element={
+            <ProtectedRoute roles={["user"]}>
+              <PassengerHome />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/payments"
+          element={
+            <ProtectedRoute roles={["user"]}>
+              <PaymentPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/safety"
+          element={
+            <ProtectedRoute roles={["user"]}>
+              <SafetyPage />
             </ProtectedRoute>
           }
         />
