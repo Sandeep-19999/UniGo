@@ -5,6 +5,9 @@ import morgan from "morgan";
 import authRoutes from "./routes/auth/authRoutes.js";
 import adminRoutes from "./routes/admin/adminRoutes.js";
 import passengerRoutes from "./routes/passenger/passengerRoutes.js";
+import passengerBrowseRoutes from "./routes/passenger/browseRoutes.js";
+import passengerBookingRoutes from "./routes/passenger/bookingRoutes.js";
+import passengerRatingRoutes from "./routes/passenger/ratingRoutes.js";
 import driverVehicleRoutes from "./routes/driver/vehicleRoutes.js";
 import driverRideRoutes from "./routes/driver/rideRoutes.js";
 
@@ -43,7 +46,10 @@ export function createApp() {
 
   app.use("/api/auth", authRoutes);
   app.use("/api/admin", adminRoutes);
+  app.use("/api/browse", passengerBrowseRoutes);
   app.use("/api/passenger", passengerRoutes);
+  app.use("/api/passenger/bookings", passengerBookingRoutes);
+  app.use("/api/ratings", passengerRatingRoutes);
 
   app.use("/api/driver/vehicles", driverVehicleRoutes);
   app.use("/api/driver/rides", driverRideRoutes);

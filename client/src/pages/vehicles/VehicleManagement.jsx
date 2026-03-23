@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../../api/axios";
+import api from "../../api/axios";
 
 const TYPE_LABELS = { bike: "Bike", car: "Car", van: "Van", mini_van: "Mini Van" };
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import StatCard from "../../../components/StatCard";
-import { api } from "../../../api/axios";
+import api from "../../../api/axios";
 import { fmtMoney } from "../../../utils/format";
 
 export default function DriverDashboard() {

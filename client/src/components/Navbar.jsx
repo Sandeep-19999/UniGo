@@ -43,7 +43,12 @@ export default function Navbar() {
               <NavItem to="/driver/history">History</NavItem>
             </>
           ) : user?.role === "user" ? (
-            <NavItem to="/home">Home</NavItem>
+            <>
+              <NavItem to="/home">Home</NavItem>
+              <NavItem to="/browse/rides">Search Rides</NavItem>
+              <NavItem to="/browse/drivers">Browse Drivers</NavItem>
+              <NavItem to="/bookings">My Bookings</NavItem>
+            </>
           ) : null}
         </nav>
 

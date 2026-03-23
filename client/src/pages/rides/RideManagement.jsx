@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../../api/axios";
+import api from "../../api/axios";
 import { fmtDateTime, fmtMoney } from "../../utils/format";
 
 const STATUS = ["pending", "ongoing", "completed", "cancelled"];

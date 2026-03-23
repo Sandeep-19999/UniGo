@@ -7,9 +7,10 @@ export default function Register() {
   const nav = useNavigate();
 
   const [name, setName] = useState("");
-  const [role, setRole] = useState("driver");
+  const [role, setRole] = useState("user");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [adminInviteCode, setAdminInviteCode] = useState("");
 
   const [err, setErr] = useState("");
@@ -18,6 +19,33 @@ export default function Register() {
   async function onSubmit(e) {
     e.preventDefault();
     setErr("");
+    
+    // Client-side validation
+    if (!name.trim()) {
+      setErr("Name is required.");
+      return;
+    }
+    if (!email.trim()) {
+      setErr("Email is required.");
+      return;
+    }
+    if (!password) {
+      setErr("Password is required.");
+      return;
+    }
+    if (password.length < 8) {
+      setErr("Password must be at least 8 characters.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErr("Passwords do not match.");
+      return;
+    }
+    if (role === "admin" && !adminInviteCode.trim()) {
+      setErr("Admin invite code is required.");
+      return;
+    }
+
     setBusy(true);
     try {
       const u = await register(name, email, password, role, adminInviteCode);
@@ -25,7 +53,8 @@ export default function Register() {
       else if (u.role === "driver") nav("/driver/dashboard");
       else nav("/home");
     } catch (e) {
-      setErr(e?.response?.data?.message || "Registration failed.");
+      const errorMsg = e?.response?.data?.message || e?.message || "Registration failed. Please try again.";
+      setErr(errorMsg);
     } finally {
       setBusy(false);
     }
@@ -43,7 +72,7 @@ export default function Register() {
 
         <form className="mt-5 space-y-4" onSubmit={onSubmit}>
           <label className="block" htmlFor="name">
-            <span className="text-sm font-semibold">Name</span>
+            <span className="text-sm font-semibold">Full Name *</span>
             <input
               id="name"
               name="name"
@@ -52,13 +81,13 @@ export default function Register() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               type="text"
-              placeholder="Your name"
+              placeholder="John Doe"
               required
             />
           </label>
 
           <label className="block" htmlFor="role">
-            <span className="text-sm font-semibold">Role</span>
+            <span className="text-sm font-semibold">Role *</span>
             <select
               id="role"
               name="role"
@@ -66,15 +95,15 @@ export default function Register() {
               value={role}
               onChange={(e) => setRole(e.target.value)}
             >
-              <option value="driver">Driver</option>
               <option value="user">Passenger</option>
+              <option value="driver">Driver</option>
               <option value="admin">Admin (invite required)</option>
             </select>
           </label>
 
           {role === "admin" ? (
             <label className="block" htmlFor="adminInviteCode">
-              <span className="text-sm font-semibold">Admin Invite Code</span>
+              <span className="text-sm font-semibold">Admin Invite Code *</span>
               <input
                 id="adminInviteCode"
                 name="adminInviteCode"
@@ -89,7 +118,7 @@ export default function Register() {
           ) : null}
 
           <label className="block" htmlFor="email">
-            <span className="text-sm font-semibold">Email</span>
+            <span className="text-sm font-semibold">Email Address *</span>
             <input
               id="email"
               name="email"
@@ -98,13 +127,13 @@ export default function Register() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               type="email"
-              placeholder="you@uni.edu"
+              placeholder="you@university.edu"
               required
             />
           </label>
 
           <label className="block" htmlFor="password">
-            <span className="text-sm font-semibold">Password</span>
+            <span className="text-sm font-semibold">Password *</span>
             <input
               id="password"
               name="password"
@@ -113,7 +142,24 @@ export default function Register() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               type="password"
-              placeholder="Minimum 8 characters"
+              placeholder="At least 8 characters"
+              required
+              minLength={8}
+            />
+            <p className="mt-1 text-xs text-slate-500">Minimum 8 characters</p>
+          </label>
+
+          <label className="block" htmlFor="confirmPassword">
+            <span className="text-sm font-semibold">Confirm Password *</span>
+            <input
+              id="confirmPassword"
+              name="confirmPassword"
+              autoComplete="new-password"
+              className="mt-1 w-full rounded-xl border p-2 outline-none focus:ring-2 focus:ring-slate-900"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              type="password"
+              placeholder="Re-enter your password"
               required
               minLength={8}
             />
@@ -123,7 +169,7 @@ export default function Register() {
             disabled={busy}
             className="w-full rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
           >
-            {busy ? "Creating..." : "Create account"}
+            {busy ? "Creating account..." : "Create account"}
           </button>
         </form>
 

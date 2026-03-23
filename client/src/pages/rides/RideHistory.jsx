@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../../api/axios";
+import api from "../../api/axios";
 import { fmtDateTime, fmtMoney } from "../../utils/format";
 
 export default function RideHistory() {

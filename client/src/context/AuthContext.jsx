@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api/axios";
+import api from "../api/axios";
 
 const AuthContext = createContext(null);
 const TOKEN_KEY = "unigo_token";
