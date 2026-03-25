@@ -3,12 +3,16 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
 import { api } from "../../../api/axios";
 import { formatCurrency } from "../../../utils/paymentHelpers";
+import StatCard from "../../../components/StatCard";
 
 export default function PassengerHome() {
   const { user } = useAuth();
   const [walletBalance, setWalletBalance] = useState(450);
-  const [completedRides, setCompletedRides] = useState(8);
+  const [completedRides, setCompletedRides] = useState(0);
   const [rating, setRating] = useState(4.8);
+  const [totalBookings, setTotalBookings] = useState(0);
+  const [activeRides, setActiveRides] = useState(0);
+  const [pendingBookings, setPendingBookings] = useState(0);
   const [recentRides, setRecentRides] = useState([
     {
       id: 1,
@@ -41,10 +45,32 @@ export default function PassengerHome() {
   const [err, setErr] = useState("");
 
   useEffect(() => {
+    // Fetch passenger rides and calculate statistics
+    api
+      .get("/passenger/rides")
+      .then((r) => {
+        const rides = r.data.rideRequests || [];
+        setTotalBookings(rides.length);
+        
+        // Calculate rides by status
+        const completedCount = rides.filter(ride => ride.status === "completed").length;
+        const activeCount = rides.filter(ride => ride.status === "active" || ride.status === "accepted").length;
+        const pendingCount = rides.filter(ride => ride.status === "pending").length;
+        
+        setCompletedRides(completedCount);
+        setActiveRides(activeCount);
+        setPendingBookings(pendingCount);
+      })
+      .catch((e) => {
+        setErr(e?.response?.data?.message || "Failed to load passenger home");
+        console.error("Error fetching rides:", e);
+      });
+
+    // Fetch home page message
     api
       .get("/passenger/home")
       .then((r) => console.log("Passenger home loaded:", r.data.message))
-      .catch((e) => setErr(e?.response?.data?.message || "Failed to load passenger home"));
+      .catch((e) => console.error("Failed to load passenger home message:", e));
   }, []);
 
   return (
@@ -58,6 +84,43 @@ export default function PassengerHome() {
           <p className="mt-2 text-slate-600">
             Continue your journey with UniGo. Book rides, check your wallet, and stay safe.
           </p>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="unigo-fade-up flex gap-2 border-b border-slate-200 [animation-delay:40ms]">
+          <button className="border-b-2 border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-600">
+            📊 Dashboard
+          </button>
+          <Link
+            to="/rides/history"
+            className="border-b-2 border-transparent px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+          >
+            📜 Ride History
+          </Link>
+        </div>
+
+        {/* Key Statistics Cards */}
+        <div className="unigo-fade-up grid gap-4 sm:grid-cols-2 lg:grid-cols-4 [animation-delay:50ms]">
+          <StatCard 
+            label="Total Bookings" 
+            value={totalBookings}
+            hint={totalBookings === 1 ? "1 booking" : `${totalBookings} bookings`}
+          />
+          <StatCard 
+            label="Completed Rides" 
+            value={completedRides}
+            hint={completedRides === 1 ? "1 ride" : `${completedRides} rides`}
+          />
+          <StatCard 
+            label="Active Rides" 
+            value={activeRides}
+            hint={activeRides === 0 ? "No active rides" : `${activeRides} ongoing`}
+          />
+          <StatCard 
+            label="Pending" 
+            value={pendingBookings}
+            hint={pendingBookings === 0 ? "All caught up" : `Awaiting driver`}
+          />
         </div>
 
         {/* Quick Status Cards */}
@@ -95,9 +158,12 @@ export default function PassengerHome() {
 
         {/* Primary CTA & Quick Action */}
         <div className="unigo-fade-up grid gap-4 sm:grid-cols-2 [animation-delay:150ms]">
-          <button className="rounded-2xl bg-emerald-600 px-6 py-4 text-center font-bold text-white shadow-lg shadow-emerald-900/25 transition hover:bg-emerald-500">
+          <Link
+            to="/rides/request"
+            className="rounded-2xl bg-emerald-600 px-6 py-4 text-center font-bold text-white shadow-lg shadow-emerald-900/25 transition hover:bg-emerald-500"
+          >
             🚗 Book Your Next Ride
-          </button>
+          </Link>
           <button className="rounded-2xl border border-slate-300 bg-white px-6 py-4 text-center font-bold text-slate-900 transition hover:border-slate-400 hover:bg-slate-50">
             🚨 Find Nearby Drivers
           </button>
@@ -148,7 +214,7 @@ export default function PassengerHome() {
             )}
 
             <Link
-              to="/payments"
+              to="/rides/history"
               className="mt-4 inline-flex items-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
             >
               View all rides →
