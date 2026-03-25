@@ -1,8 +1,19 @@
 import User from "../../models/users/User.js";
+import Admin from "../../models/admin/Admin.js";
 import { signToken } from "../../utils/jwt.js";
 
 function safeUser(u) {
   return { id: u._id, name: u.name, email: u.email, role: u.role, createdAt: u.createdAt };
+}
+
+function normalizeRole(role) {
+  const value = String(role || "user").trim().toLowerCase();
+
+  if (value === "passenger") {
+    return "user";
+  }
+
+  return value;
 }
 
 export async function register(req, res, next) {
@@ -14,11 +25,13 @@ export async function register(req, res, next) {
     const exists = await User.findOne({ email: normalizedEmail });
     if (exists) return res.status(409).json({ message: "Email already registered." });
 
-    let finalRole = role || "user";
+    let finalRole = normalizeRole(role);
     if (!["admin", "driver", "user"].includes(finalRole)) finalRole = "user";
 
     if (finalRole === "admin") {
-      const ok = adminInviteCode && adminInviteCode === process.env.ADMIN_INVITE_CODE;
+      const inviteCode = String(adminInviteCode || "").trim();
+      const expectedCode = String(process.env.ADMIN_INVITE_CODE || "").trim();
+      const ok = inviteCode && expectedCode && inviteCode === expectedCode;
       if (!ok) return res.status(403).json({ message: "Admin registration not allowed." });
     }
 
@@ -28,6 +41,17 @@ export async function register(req, res, next) {
       password: String(password),
       role: finalRole
     });
+
+    // Create Admin profile if user is admin
+    if (finalRole === "admin") {
+      await Admin.create({
+        user: user._id,
+        adminLevel: "admin",
+        department: "Operations",
+        permissions: [],
+        isActive: true
+      });
+    }
 
     const token = signToken({ id: user._id, role: user.role });
     res.status(201).json({ token, user: safeUser(user) });

@@ -26,7 +26,11 @@ export default function Login() {
       else if (u.role === "driver") nav("/driver/dashboard");
       else nav("/home");
     } catch (e) {
-      setErr(e?.response?.data?.message || "Login failed.");
+      if (!e?.response) {
+        setErr("Cannot connect to server. Start backend and try again.");
+      } else {
+        setErr(e?.response?.data?.message || "Login failed.");
+      }
     } finally {
       setBusy(false);
     }

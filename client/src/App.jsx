@@ -13,6 +13,11 @@ import PassengerHome from "./pages/users/passenger/PassengerHome";
 import VehicleManagement from "./pages/vehicles/VehicleManagement";
 import RideManagement from "./pages/rides/RideManagement";
 import RideHistory from "./pages/rides/RideHistory";
+import PassengerRideHistory from "./pages/rides/PassengerRideHistory";
+import RideRequestForm from "./pages/rides/RideRequestForm";
+import BrowseDrivers from "./pages/rides/BrowseDrivers";
+import MyBookings from "./pages/rides/MyBookings";
+import RateDriver from "./pages/rides/RateDriver";
 import DirectionalHire from "./pages/directional-hire/DirectionalHire";
 
 import Unauthorized from "./pages/common/Unauthorized";
@@ -90,6 +95,46 @@ export default function App() {
           element={
             <ProtectedRoute roles={["user"]}>
               <PassengerHome />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/rides/request"
+          element={
+            <ProtectedRoute roles={["user"]}>
+              <RideRequestForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/rides/browse"
+          element={
+            <ProtectedRoute roles={["user"]}>
+              <BrowseDrivers />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/rides/my-bookings"
+          element={
+            <ProtectedRoute roles={["user"]}>
+              <MyBookings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/rides/rate/:bookingId"
+          element={
+            <ProtectedRoute roles={["user"]}>
+              <RateDriver />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/rides/history"
+          element={
+            <ProtectedRoute roles={["user"]}>
+              <PassengerRideHistory />
             </ProtectedRoute>
           }
         />

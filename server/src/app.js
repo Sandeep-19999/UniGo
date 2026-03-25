@@ -7,6 +7,8 @@ import adminRoutes from "./routes/admin/adminRoutes.js";
 import passengerRoutes from "./routes/passenger/passengerRoutes.js";
 import driverVehicleRoutes from "./routes/driver/vehicleRoutes.js";
 import driverRideRoutes from "./routes/driver/rideRoutes.js";
+import testRoutes from "./routes/test/testRoutes.js";
+import ratingRoutes from "./routes/ratingRoutes.js";
 
 import { notFound, errorHandler } from "./middleware/errorMiddleware.js";
 
@@ -14,6 +16,10 @@ function parseOrigins() {
   const raw = process.env.CORS_ORIGIN || "";
   const list = raw.split(",").map((s) => s.trim()).filter(Boolean);
   return list.length ? list : ["http://localhost:5173", "http://127.0.0.1:5173"];
+}
+
+function isLocalOrigin(origin) {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
 }
 
 export function createApp() {
@@ -26,7 +32,7 @@ export function createApp() {
     cors({
       origin: (origin, cb) => {
         if (!origin) return cb(null, true); // allow Postman/curl
-        if (allowed.has(origin)) return cb(null, true);
+        if (allowed.has(origin) || isLocalOrigin(origin)) return cb(null, true);
         return cb(null, false);
       },
       credentials: true,
@@ -44,6 +50,8 @@ export function createApp() {
   app.use("/api/auth", authRoutes);
   app.use("/api/admin", adminRoutes);
   app.use("/api/passenger", passengerRoutes);
+  app.use("/api/test", testRoutes);
+  app.use("/api/ratings", ratingRoutes);
 
   app.use("/api/driver/vehicles", driverVehicleRoutes);
   app.use("/api/driver/rides", driverRideRoutes);
