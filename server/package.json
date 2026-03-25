@@ -4,7 +4,7 @@
   "type": "module",
   "main": "src/server.js",
   "scripts": {
-    "dev": "nodemon src/server.js",
+    "dev": "powershell -Command \"Get-NetTCPConnection -LocalPort 5001 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }; nodemon src/server.js\"",
     "dev:win": "powershell -Command \"Get-NetTCPConnection -LocalPort 5001 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }; nodemon src/server.js\"",
     "dev:mac": "bash -c 'PID=$(lsof -ti:5001); if [ -n \"$PID\" ]; then kill -9 $PID; fi; nodemon src/server.js'",
     "start": "node src/server.js",
