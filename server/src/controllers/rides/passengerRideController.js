@@ -1,11 +1,12 @@
 import RideRequest from "../../models/rides/RideRequest.js";
 import Ride from "../../models/rides/Ride.js";
+import { matchDriversForRideRequest, normalizeLatLng } from "../../services/matchingService.js";
 
 export async function browseAvailableRides(req, res, next) {
   try {
     const rides = await Ride.find({ status: "pending", availableSeats: { $gt: 0 } })
       .populate("driver", "name email phone")
-      .populate("vehicle", "type plateNumber seatCapacity")
+      .populate("vehicle", "type plateNumber seatCapacity make model year")
       .sort({ departureTime: 1 });
 
     res.json({ rides });
@@ -19,16 +20,17 @@ export async function createRideRequest(req, res, next) {
     const {
       pickupLocation,
       dropLocation,
+      pickupCoords,
+      dropCoords,
       numberOfSeats,
       vehicleType,
       paymentMethod,
       notes,
       distanceKm,
       timeMin,
-      estimatedFare,
+      estimatedFare
     } = req.body;
 
-    // Validation - Pickup Location
     if (!pickupLocation || !pickupLocation.trim()) {
       return res.status(400).json({ message: "Pickup location is required" });
     }
@@ -36,7 +38,6 @@ export async function createRideRequest(req, res, next) {
       return res.status(400).json({ message: "Pickup location must be at least 3 characters" });
     }
 
-    // Validation - Drop Location
     if (!dropLocation || !dropLocation.trim()) {
       return res.status(400).json({ message: "Drop location is required" });
     }
@@ -47,7 +48,6 @@ export async function createRideRequest(req, res, next) {
       return res.status(400).json({ message: "Drop location must be different from pickup location" });
     }
 
-    // Validation - Number of Seats
     if (numberOfSeats === undefined || numberOfSeats === null) {
       return res.status(400).json({ message: "Number of seats is required" });
     }
@@ -58,22 +58,18 @@ export async function createRideRequest(req, res, next) {
       return res.status(400).json({ message: "Number of seats must be 0 (any), 1 (1+), 2 (2+), or 3 (3+)" });
     }
 
-    // Validation - Vehicle Type
-    if (vehicleType && !["bike", "car", "van"].includes(vehicleType)) {
-      return res.status(400).json({ message: "Vehicle type must be bike, car, or van" });
+    if (vehicleType && !["bike", "car", "van", "mini_van"].includes(vehicleType)) {
+      return res.status(400).json({ message: "Vehicle type must be bike, car, van, or mini_van" });
     }
 
-    // Validation - Payment Method
     if (paymentMethod && !["cash", "online"].includes(paymentMethod)) {
       return res.status(400).json({ message: "Payment method must be cash or online" });
     }
 
-    // Validation - Notes
     if (notes && notes.length > 300) {
       return res.status(400).json({ message: "Notes cannot exceed 300 characters" });
     }
 
-    // Validation - Distance / Time / Fare
     if (distanceKm !== undefined && (!Number.isFinite(distanceKm) || distanceKm < 0)) {
       return res.status(400).json({ message: "Distance must be a non-negative number" });
     }
@@ -88,6 +84,8 @@ export async function createRideRequest(req, res, next) {
       passenger: req.user._id,
       pickupLocation: pickupLocation.trim(),
       dropLocation: dropLocation.trim(),
+      pickupCoords: normalizeLatLng(pickupCoords),
+      dropCoords: normalizeLatLng(dropCoords),
       numberOfSeats,
       vehicleType: vehicleType || "car",
       paymentMethod: paymentMethod || "cash",
@@ -95,11 +93,20 @@ export async function createRideRequest(req, res, next) {
       distanceKm: Number((distanceKm || 0).toFixed(2)),
       timeMin: Math.round(timeMin || 0),
       estimatedFare: Number((estimatedFare || 0).toFixed(2)),
-      estimatedPrice: Number((estimatedFare || 0).toFixed(2)),
+      estimatedPrice: Number((estimatedFare || 0).toFixed(2))
     });
 
-    await rideRequest.populate("passenger", "name email phone");
-    res.status(201).json({ message: "Ride request created successfully", rideRequest });
+    await matchDriversForRideRequest(rideRequest._id);
+
+    const populatedRideRequest = await RideRequest.findById(rideRequest._id)
+      .populate("passenger", "name email phone")
+      .populate("acceptedBy", "name email phone")
+      .populate("acceptedVehicle", "type plateNumber make model year");
+
+    res.status(201).json({
+      message: "Ride request created successfully",
+      rideRequest: populatedRideRequest
+    });
   } catch (err) {
     next(err);
   }
@@ -109,6 +116,7 @@ export async function getMyRideRequests(req, res, next) {
   try {
     const rideRequests = await RideRequest.find({ passenger: req.user._id })
       .populate("acceptedBy", "name email phone")
+      .populate("acceptedVehicle", "type plateNumber make model year")
       .sort({ createdAt: -1 });
 
     res.json({ rideRequests });
@@ -122,7 +130,9 @@ export async function getRideRequestById(req, res, next) {
     const { id } = req.params;
     const rideRequest = await RideRequest.findOne({ _id: id, passenger: req.user._id })
       .populate("passenger", "name email phone")
-      .populate("acceptedBy", "name email phone");
+      .populate("acceptedBy", "name email phone")
+      .populate("acceptedVehicle", "type plateNumber make model year")
+      .populate("matchedDrivers.driver", "name email phone");
 
     if (!rideRequest) {
       return res.status(404).json({ message: "Ride request not found" });
@@ -152,6 +162,7 @@ export async function cancelRideRequest(req, res, next) {
     }
 
     rideRequest.status = "cancelled";
+    rideRequest.matchingStatus = "expired";
     await rideRequest.save();
     await rideRequest.populate("acceptedBy", "name email phone");
 

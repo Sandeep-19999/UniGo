@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../../../api/axios";
 
-// Stat Card Component
+// =========================================================
+// SMALL STAT CARD COMPONENT
+// Reusable card used to display top-level admin dashboard stats
+// =========================================================
 function StatCard({ label, value, icon, color }) {
   return (
-    <div className="rounded-2xl border bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
+    <div className="rounded-2xl border bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm text-slate-500 font-medium">{label}</p>
-          <p className={`text-3xl font-bold mt-2 ${color}`}>{value}</p>
+          <p className="text-sm font-medium text-slate-500">{label}</p>
+          <p className={`mt-2 text-3xl font-bold ${color}`}>{value}</p>
         </div>
         <div className={`text-4xl ${color}`}>{icon}</div>
       </div>
@@ -16,20 +20,26 @@ function StatCard({ label, value, icon, color }) {
   );
 }
 
-// Management Table Component
+// =========================================================
+// MANAGEMENT TABLE COMPONENT
+// Generic table used for passengers and drivers list views
+// =========================================================
 function ManagementTable({ title, columns, data, loading, error }) {
   return (
-    <div className="rounded-2xl border bg-white shadow-sm overflow-hidden">
-      <div className="p-6 border-b">
+    <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+      {/* Table title */}
+      <div className="border-b p-6">
         <h2 className="text-lg font-bold">{title}</h2>
       </div>
 
+      {/* API error message */}
       {error && (
-        <div className="p-6 text-sm text-red-700 bg-red-50">
+        <div className="bg-red-50 p-6 text-sm text-red-700">
           {error}
         </div>
       )}
 
+      {/* Loading state */}
       {loading ? (
         <div className="p-6 text-center text-slate-500">Loading...</div>
       ) : (
@@ -47,6 +57,7 @@ function ManagementTable({ title, columns, data, loading, error }) {
                 ))}
               </tr>
             </thead>
+
             <tbody>
               {data && data.length > 0 ? (
                 data.map((row, idx) => (
@@ -76,8 +87,9 @@ function ManagementTable({ title, columns, data, loading, error }) {
         </div>
       )}
 
+      {/* Record count footer */}
       {data && (
-        <div className="p-4 border-t text-sm text-slate-600 bg-slate-50">
+        <div className="border-t bg-slate-50 p-4 text-sm text-slate-600">
           Total: <span className="font-semibold">{data.length}</span> records
         </div>
       )}
@@ -86,26 +98,41 @@ function ManagementTable({ title, columns, data, loading, error }) {
 }
 
 export default function AdminDashboard() {
+  // =========================================================
+  // STATE: DASHBOARD DATA
+  // =========================================================
   const [stats, setStats] = useState(null);
   const [passengers, setPassengers] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [activeTab, setActiveTab] = useState("overview");
 
+  // =========================================================
+  // STATE: LOADING FLAGS
+  // Controls loading UI for each independent data section
+  // =========================================================
   const [loading, setLoading] = useState({
     stats: true,
     passengers: false,
     drivers: false
   });
 
+  // =========================================================
+  // STATE: ERROR MESSAGES
+  // Stores API errors separately for each dashboard section
+  // =========================================================
   const [errors, setErrors] = useState({
     stats: "",
     passengers: "",
     drivers: ""
   });
 
-  // Fetch stats
+  // =========================================================
+  // FETCH ADMIN STATS
+  // Loads overall dashboard summary numbers when page mounts
+  // =========================================================
   useEffect(() => {
     setLoading((prev) => ({ ...prev, stats: true }));
+
     api
       .get("/admin/stats")
       .then((res) => {
@@ -118,13 +145,19 @@ export default function AdminDashboard() {
           stats: err?.response?.data?.message || "Failed to load stats"
         }));
       })
-      .finally(() => setLoading((prev) => ({ ...prev, stats: false })));
+      .finally(() => {
+        setLoading((prev) => ({ ...prev, stats: false }));
+      });
   }, []);
 
-  // Fetch passengers
+  // =========================================================
+  // FETCH PASSENGERS
+  // Runs only when admin opens the passengers tab
+  // =========================================================
   useEffect(() => {
     if (activeTab === "passengers") {
       setLoading((prev) => ({ ...prev, passengers: true }));
+
       api
         .get("/admin/passengers")
         .then((res) => {
@@ -135,6 +168,7 @@ export default function AdminDashboard() {
             Location: p.location || "N/A",
             "Joined Date": new Date(p.createdAt).toLocaleDateString()
           }));
+
           setPassengers(passengerData);
           setErrors((prev) => ({ ...prev, passengers: "" }));
         })
@@ -144,14 +178,20 @@ export default function AdminDashboard() {
             passengers: err?.response?.data?.message || "Failed to load passengers"
           }));
         })
-        .finally(() => setLoading((prev) => ({ ...prev, passengers: false })));
+        .finally(() => {
+          setLoading((prev) => ({ ...prev, passengers: false }));
+        });
     }
   }, [activeTab]);
 
-  // Fetch drivers
+  // =========================================================
+  // FETCH DRIVERS
+  // Runs only when admin opens the drivers tab
+  // =========================================================
   useEffect(() => {
     if (activeTab === "drivers") {
       setLoading((prev) => ({ ...prev, drivers: true }));
+
       api
         .get("/admin/drivers")
         .then((res) => {
@@ -163,6 +203,7 @@ export default function AdminDashboard() {
             Rating: d.rating || "N/A",
             "Joined Date": new Date(d.createdAt).toLocaleDateString()
           }));
+
           setDrivers(driverData);
           setErrors((prev) => ({ ...prev, drivers: "" }));
         })
@@ -172,22 +213,67 @@ export default function AdminDashboard() {
             drivers: err?.response?.data?.message || "Failed to load drivers"
           }));
         })
-        .finally(() => setLoading((prev) => ({ ...prev, drivers: false })));
+        .finally(() => {
+          setLoading((prev) => ({ ...prev, drivers: false }));
+        });
     }
   }, [activeTab]);
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-7xl p-6 space-y-8">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-900">Admin Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Manage passengers, drivers, payments, and system settings
-          </p>
+      <div className="mx-auto max-w-7xl space-y-8 p-6">
+        {/* =====================================================
+            HEADER SECTION
+            Includes title, description, and quick admin action
+        ===================================================== */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h1 className="text-3xl font-extrabold text-slate-900">
+              Admin Dashboard
+            </h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Manage passengers, drivers, payments, and system settings
+            </p>
+          </div>
+
+          {/* Quick action button to open driver onboarding review page */}
+          <Link
+            to="/admin/driver-reviews"
+            className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            Open Driver Reviews
+          </Link>
         </div>
 
-        {/* Stats Cards */}
+        {/* =====================================================
+            QUICK ACTION CARD
+            Highlight entry point for approving driver documents
+        ===================================================== */}
+        <div className="rounded-2xl border bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">
+                Driver Onboarding Review
+              </h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Review profile photos, licenses, insurance, revenue licenses,
+                and vehicle registration documents submitted by drivers.
+              </p>
+            </div>
+
+            <Link
+              to="/admin/driver-reviews"
+              className="inline-flex items-center justify-center rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Go to Review Queue
+            </Link>
+          </div>
+        </div>
+
+        {/* =====================================================
+            STATS CARD SECTION
+            Shows main system counts after stats are loaded
+        ===================================================== */}
         {!loading.stats && stats && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
@@ -217,13 +303,25 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Tab Navigation */}
+        {/* =====================================================
+            STATS ERROR MESSAGE
+        ===================================================== */}
+        {errors.stats && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {errors.stats}
+          </div>
+        )}
+
+        {/* =====================================================
+            TAB NAVIGATION
+            Switches between overview, passengers, drivers, payments
+        ===================================================== */}
         <div className="flex gap-4 border-b border-slate-200">
           {["overview", "passengers", "drivers", "payments"].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-3 text-sm font-semibold capitalize border-b-2 transition-colors ${
+              className={`border-b-2 px-4 py-3 text-sm font-semibold capitalize transition-colors ${
                 activeTab === tab
                   ? "border-slate-900 text-slate-900"
                   : "border-transparent text-slate-600 hover:text-slate-900"
@@ -234,12 +332,15 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* Tab Content */}
+        {/* =====================================================
+            TAB CONTENT: OVERVIEW
+            Shows summary cards and calculated system metrics
+        ===================================================== */}
         {activeTab === "overview" && stats && (
           <div className="grid gap-6 lg:grid-cols-2">
-            {/* Additional Stats */}
+            {/* Booking stats */}
             <div className="rounded-2xl border bg-white p-6 shadow-sm">
-              <h3 className="font-bold mb-4">Booking Overview</h3>
+              <h3 className="mb-4 font-bold">Booking Overview</h3>
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-slate-600">Completed Bookings</span>
@@ -247,44 +348,49 @@ export default function AdminDashboard() {
                     {stats.completedBookings}
                   </span>
                 </div>
+
                 <div className="flex justify-between">
                   <span className="text-slate-600">Active Bookings</span>
                   <span className="font-semibold text-blue-600">
                     {stats.activeBookings}
                   </span>
                 </div>
+
                 <div className="flex justify-between">
                   <span className="text-slate-600">Completion Rate</span>
                   <span className="font-semibold text-purple-600">
                     {stats.totalBookings > 0
-                      ? `${((stats.completedBookings / stats.totalBookings) * 100).toFixed(1)}%`
+                      ? `${(
+                          (stats.completedBookings / stats.totalBookings) *
+                          100
+                        ).toFixed(1)}%`
                       : "N/A"}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* System Info */}
+            {/* System-level stats */}
             <div className="rounded-2xl border bg-white p-6 shadow-sm">
-              <h3 className="font-bold mb-4">System Overview</h3>
+              <h3 className="mb-4 font-bold">System Overview</h3>
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-slate-600">Admin Accounts</span>
                   <span className="font-semibold">{stats.totalAdmins}</span>
                 </div>
+
                 <div className="flex justify-between">
                   <span className="text-slate-600">Total Users</span>
                   <span className="font-semibold">
                     {stats.totalPassengers + stats.totalDrivers}
                   </span>
                 </div>
+
                 <div className="flex justify-between">
                   <span className="text-slate-600">Driver/Passenger Ratio</span>
                   <span className="font-semibold">
                     {stats.totalPassengers > 0
-                      ? (
-                        stats.totalDrivers / stats.totalPassengers
-                      ).toFixed(2)
+                      ? (stats.totalDrivers / stats.totalPassengers).toFixed(2)
                       : "N/A"}
                   </span>
                 </div>
@@ -293,6 +399,10 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* =====================================================
+            TAB CONTENT: PASSENGERS
+            Displays passengers table
+        ===================================================== */}
         {activeTab === "passengers" && (
           <ManagementTable
             title="Passenger Management"
@@ -303,6 +413,10 @@ export default function AdminDashboard() {
           />
         )}
 
+        {/* =====================================================
+            TAB CONTENT: DRIVERS
+            Displays drivers table
+        ===================================================== */}
         {activeTab === "drivers" && (
           <ManagementTable
             title="Driver Management"
@@ -313,24 +427,33 @@ export default function AdminDashboard() {
           />
         )}
 
+        {/* =====================================================
+            TAB CONTENT: PAYMENTS
+            Placeholder area for future payment management
+        ===================================================== */}
         {activeTab === "payments" && (
           <div className="rounded-2xl border bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold mb-6">Payment Management</h2>
+            <h2 className="mb-6 text-lg font-bold">Payment Management</h2>
+
             <div className="space-y-4">
               <div className="rounded-lg bg-slate-50 p-4">
                 <p className="text-sm text-slate-600">
                   Payment tracking and management features coming soon.
                 </p>
               </div>
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="rounded-lg border p-4">
-                  <p className="text-sm text-slate-600 mb-2">Total Revenue</p>
+                  <p className="mb-2 text-sm text-slate-600">Total Revenue</p>
                   <p className="text-2xl font-bold text-green-600">
                     {stats ? `$${(stats.totalRevenue || 0).toLocaleString()}` : "$0"}
                   </p>
                 </div>
+
                 <div className="rounded-lg border p-4">
-                  <p className="text-sm text-slate-600 mb-2">Completed Transactions</p>
+                  <p className="mb-2 text-sm text-slate-600">
+                    Completed Transactions
+                  </p>
                   <p className="text-2xl font-bold text-blue-600">
                     {stats ? stats.completedBookings : "0"}
                   </p>
@@ -342,4 +465,4 @@ export default function AdminDashboard() {
       </div>
     </div>
   );
-} 
+}
