@@ -1,35 +1,36 @@
-import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
+import { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { getDriverNextRoute } from '../../utils/driverOnboarding';
 
 export default function Login() {
   const { login } = useAuth();
   const nav = useNavigate();
   const location = useLocation();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [err, setErr] = useState("");
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
   const from = location.state?.from;
 
   async function onSubmit(e) {
     e.preventDefault();
-    setErr("");
+    setErr('');
     setBusy(true);
     try {
-      const u = await login(email, password);
+      const { user, onboarding } = await login(email, password);
       if (from) return nav(from, { replace: true });
 
-      if (u.role === "admin") nav("/admin/dashboard");
-      else if (u.role === "driver") nav("/driver/dashboard");
-      else nav("/home");
+      if (user.role === 'admin') nav('/admin/dashboard');
+      else if (user.role === 'driver') nav(getDriverNextRoute(onboarding), { replace: true });
+      else nav('/home');
     } catch (e) {
       if (!e?.response) {
-        setErr("Cannot connect to server. Start backend and try again.");
+        setErr('Cannot connect to server. Start backend and try again.');
       } else {
-        setErr(e?.response?.data?.message || "Login failed.");
+        setErr(e?.response?.data?.message || 'Login failed.');
       }
     } finally {
       setBusy(false);
@@ -42,9 +43,7 @@ export default function Login() {
         <h1 className="text-2xl font-extrabold">Login</h1>
         <p className="mt-1 text-sm text-slate-600">Sign in as Admin, Driver, or Passenger.</p>
 
-        {err ? (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div>
-        ) : null}
+        {err ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
 
         <form className="mt-5 space-y-4" onSubmit={onSubmit}>
           <label className="block" htmlFor="email">
@@ -78,16 +77,13 @@ export default function Login() {
             />
           </label>
 
-          <button
-            disabled={busy}
-            className="w-full rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-          >
-            {busy ? "Signing in..." : "Sign in"}
+          <button disabled={busy} className="w-full rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60">
+            {busy ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
 
         <div className="mt-4 text-sm text-slate-600">
-          No account?{" "}
+          No account?{' '}
           <Link className="font-semibold text-slate-900 underline" to="/auth/register">
             Register
           </Link>

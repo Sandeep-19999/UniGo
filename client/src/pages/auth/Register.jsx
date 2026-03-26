@@ -1,34 +1,35 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { getDriverNextRoute } from '../../utils/driverOnboarding';
 
 export default function Register() {
   const { register } = useAuth();
   const nav = useNavigate();
 
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("driver");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [adminInviteCode, setAdminInviteCode] = useState("");
+  const [name, setName] = useState('');
+  const [role, setRole] = useState('driver');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [adminInviteCode, setAdminInviteCode] = useState('');
 
-  const [err, setErr] = useState("");
+  const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function onSubmit(e) {
     e.preventDefault();
-    setErr("");
+    setErr('');
     setBusy(true);
     try {
-      const u = await register(name, email, password, role, adminInviteCode);
-      if (u.role === "admin") nav("/admin/dashboard");
-      else if (u.role === "driver") nav("/driver/dashboard");
-      else nav("/home");
+      const { user, onboarding } = await register(name, email, password, role, adminInviteCode);
+      if (user.role === 'admin') nav('/admin/dashboard');
+      else if (user.role === 'driver') nav(getDriverNextRoute(onboarding), { replace: true });
+      else nav('/home');
     } catch (e) {
       if (!e?.response) {
-        setErr("Cannot connect to server. Start backend and try again.");
+        setErr('Cannot connect to server. Start backend and try again.');
       } else {
-        setErr(e?.response?.data?.message || "Registration failed.");
+        setErr(e?.response?.data?.message || 'Registration failed.');
       }
     } finally {
       setBusy(false);
@@ -41,9 +42,7 @@ export default function Register() {
         <h1 className="text-2xl font-extrabold">Register</h1>
         <p className="mt-1 text-sm text-slate-600">Create an account with a role.</p>
 
-        {err ? (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div>
-        ) : null}
+        {err ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
 
         <form className="mt-5 space-y-4" onSubmit={onSubmit}>
           <label className="block" htmlFor="name">
@@ -76,7 +75,7 @@ export default function Register() {
             </select>
           </label>
 
-          {role === "admin" ? (
+          {role === 'admin' ? (
             <label className="block" htmlFor="adminInviteCode">
               <span className="text-sm font-semibold">Admin Invite Code</span>
               <input
@@ -123,16 +122,13 @@ export default function Register() {
             />
           </label>
 
-          <button
-            disabled={busy}
-            className="w-full rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-          >
-            {busy ? "Creating..." : "Create account"}
+          <button disabled={busy} className="w-full rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60">
+            {busy ? 'Creating...' : 'Create account'}
           </button>
         </form>
 
         <div className="mt-4 text-sm text-slate-600">
-          Already have an account?{" "}
+          Already have an account?{' '}
           <Link className="font-semibold text-slate-900 underline" to="/auth/login">
             Login
           </Link>
