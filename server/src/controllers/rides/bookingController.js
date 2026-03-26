@@ -6,58 +6,45 @@ export async function createBooking(req, res, next) {
   try {
     const { rideId, seatsBooked, notes } = req.body;
 
-    // Validate rideId exists and is a valid ObjectId
     if (!rideId) {
       return res.status(400).json({ message: "rideId is required" });
     }
+
     if (!mongoose.Types.ObjectId.isValid(rideId)) {
       return res.status(400).json({ message: "rideId must be a valid ObjectId" });
     }
 
-    // Validate seatsBooked
     if (seatsBooked === undefined || seatsBooked === null) {
       return res.status(400).json({ message: "seatsBooked is required" });
     }
 
-    // Check if seatsBooked is a valid integer
     if (!Number.isInteger(seatsBooked)) {
       return res.status(400).json({ message: "seatsBooked must be an integer" });
     }
 
-    // Check minimum seats
     if (seatsBooked < 1) {
       return res.status(400).json({ message: "seatsBooked must be at least 1" });
     }
 
-    // Check if ride exists
     const ride = await Ride.findById(rideId);
     if (!ride) {
       return res.status(404).json({ message: "Ride not found" });
     }
 
-    // Check if ride has enough available seats
+    if (ride.status !== "pending") {
+      return res
+        .status(400)
+        .json({ message: `Cannot book ride with status: ${ride.status}` });
+    }
+
     if (ride.availableSeats < seatsBooked) {
       return res.status(400).json({
         message: `Not enough seats available. Available: ${ride.availableSeats}, Requested: ${seatsBooked}`
       });
     }
 
-    // Check if seatsBooked exceeds maximum allowed (safety check)
-    if (seatsBooked > ride.availableSeats) {
-      return res.status(400).json({
-        message: `Cannot book more than ${ride.availableSeats} seats`
-      });
-    }
+    const totalPrice = Number(ride.pricePerSeat || 0) * seatsBooked;
 
-    // Check if ride status allows booking
-    if (ride.status !== "pending") {
-      return res.status(400).json({ message: `Cannot book ride with status: ${ride.status}` });
-    }
-
-    // Calculate total price
-    const totalPrice = ride.pricePerSeat * seatsBooked;
-
-    // Create booking
     const booking = await Booking.create({
       passenger: req.user._id,
       ride: rideId,
@@ -66,10 +53,19 @@ export async function createBooking(req, res, next) {
       notes: notes ? notes.trim() : ""
     });
 
-    // Populate booking details
+    ride.bookedSeats += seatsBooked;
+    ride.availableSeats = ride.totalSeats - ride.bookedSeats;
+    await ride.save();
+
     await booking.populate([
-      { path: "passenger", select: "name email phone" },
-      { path: "ride", populate: { path: "driver vehicle" } }
+      { path: "passenger", select: "name email" },
+      {
+        path: "ride",
+        populate: [
+          { path: "driver", select: "name email" },
+          { path: "vehicle", select: "type plateNumber seatCapacity" }
+        ]
+      }
     ]);
 
     res.status(201).json({
@@ -85,7 +81,7 @@ export async function getPassengerBookings(req, res, next) {
   try {
     const bookings = await Booking.find({ passenger: req.user._id })
       .populate("ride", "origin destination departureTime pricePerSeat status vehicle")
-      .populate("ride", { path: "driver", select: "name email phone" })
+      .populate("ride", { path: "driver", select: "name email" })
       .sort({ createdAt: -1 });
 
     res.json({ bookings });
@@ -100,12 +96,12 @@ export async function getBookingById(req, res, next) {
 
     const booking = await Booking.findOne({ _id: id, passenger: req.user._id })
       .populate([
-        { path: "passenger", select: "name email phone" },
+        { path: "passenger", select: "name email" },
         {
           path: "ride",
           select: "origin destination departureTime pricePerSeat status",
           populate: [
-            { path: "driver", select: "name email phone" },
+            { path: "driver", select: "name email" },
             { path: "vehicle", select: "type plateNumber seatCapacity" }
           ]
         }
@@ -140,7 +136,7 @@ export async function updateBookingStatus(req, res, next) {
     await booking.save();
 
     await booking.populate([
-      { path: "passenger", select: "name email phone" },
+      { path: "passenger", select: "name email" },
       { path: "ride" }
     ]);
 
@@ -154,7 +150,7 @@ export async function cancelBooking(req, res, next) {
   try {
     const { id } = req.params;
 
-    const booking = await Booking.findOne({ _id: id, passenger: req.user._id });
+    const booking = await Booking.findOne({ _id: id, passenger: req.user._id }).populate("ride");
 
     if (!booking) {
       return res.status(404).json({ message: "Booking not found" });
@@ -171,8 +167,14 @@ export async function cancelBooking(req, res, next) {
     booking.status = "cancelled";
     await booking.save();
 
+    if (booking.ride) {
+      booking.ride.bookedSeats = Math.max(0, booking.ride.bookedSeats - booking.seatsBooked);
+      booking.ride.availableSeats = booking.ride.totalSeats - booking.ride.bookedSeats;
+      await booking.ride.save();
+    }
+
     await booking.populate([
-      { path: "passenger", select: "name email phone" },
+      { path: "passenger", select: "name email" },
       { path: "ride" }
     ]);
 
