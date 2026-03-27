@@ -29,18 +29,6 @@ function DashboardIcon() {
   );
 }
 
-function RideIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M3 16h18" />
-      <path d="M5 16l1.5-5h11L19 16" />
-      <circle cx="7.5" cy="17.5" r="1.5" />
-      <circle cx="16.5" cy="17.5" r="1.5" />
-      <path d="M8 11l1.5-3h5L16 11" />
-    </svg>
-  );
-}
-
 function VehicleIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
@@ -62,20 +50,10 @@ function HistoryIcon() {
   );
 }
 
-function DirectionIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M21 3l-9 18-2-8-8-2 19-8z" />
-    </svg>
-  );
-}
-
 const NAV_ITEMS = [
   { label: "Dashboard", to: "/driver/dashboard", icon: DashboardIcon },
-  { label: "Rides", to: "/driver/rides", icon: RideIcon },
-  { label: "Vehicles", to: "/driver/vehicles", icon: VehicleIcon },
-  { label: "History", to: "/driver/history", icon: HistoryIcon },
-  { label: "Directional Hire", to: "/driver/directional-hire", icon: DirectionIcon }
+  { label: "Ride History", to: "/driver/history", icon: HistoryIcon },
+  { label: "Vehicle Details", to: "/driver/vehicles", icon: VehicleIcon }
 ];
 
 function SidebarLink({ item, onNavigate }) {
@@ -85,12 +63,7 @@ function SidebarLink({ item, onNavigate }) {
     <NavLink
       to={item.to}
       onClick={onNavigate}
-      className={({ isActive }) =>
-        [
-          "driver-sidebar-link",
-          isActive ? "driver-sidebar-link-active" : ""
-        ].join(" ")
-      }
+      className={({ isActive }) => ["driver-sidebar-link", isActive ? "driver-sidebar-link-active" : ""].join(" ")}
     >
       <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
         <Icon />
@@ -142,9 +115,7 @@ export default function DriverLayout({ title, subtitle, actions, children }) {
 
       <div className="mt-6 px-4">
         <div className="driver-card p-4">
-          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-            Driver profile
-          </div>
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Driver profile</div>
           <div className="mt-3 flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-sm font-bold text-white">
               {(user?.name || "D").slice(0, 1).toUpperCase()}
@@ -168,16 +139,12 @@ export default function DriverLayout({ title, subtitle, actions, children }) {
   return (
     <div className="min-h-screen bg-[#f4f7f6] text-slate-900">
       <div className="flex min-h-screen">
-        <aside className="hidden w-[290px] shrink-0 border-r border-slate-200/80 bg-white md:block">
-          {sidebar}
-        </aside>
+        <aside className="hidden w-[290px] shrink-0 border-r border-slate-200/80 bg-white md:block">{sidebar}</aside>
 
         {mobileOpen ? (
           <div className="fixed inset-0 z-50 md:hidden">
             <div className="absolute inset-0 bg-slate-950/40" onClick={() => setMobileOpen(false)} />
-            <div className="absolute left-0 top-0 h-full w-[290px] border-r border-slate-200 bg-white shadow-2xl">
-              {sidebar}
-            </div>
+            <div className="absolute left-0 top-0 h-full w-[290px] border-r border-slate-200 bg-white shadow-2xl">{sidebar}</div>
           </div>
         ) : null}
 
@@ -200,7 +167,7 @@ export default function DriverLayout({ title, subtitle, actions, children }) {
                   </svg>
                   <input
                     className="w-full bg-transparent text-sm text-slate-700 outline-none"
-                    placeholder="Search routes, vehicles, ride IDs..."
+                    placeholder="Search dashboard, ride history, vehicle details..."
                   />
                 </div>
               </div>

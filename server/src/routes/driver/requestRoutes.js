@@ -4,6 +4,7 @@ import { requireApprovedDriverOnboarding } from "../../middleware/driverOnboardi
 import {
   listMatchedRequests,
   acceptMatchedRequest,
+  updateRideProgressStep,
   rejectMatchedRequest,
   getAcceptedDriverRequests
 } from "../../controllers/driver/driverRequestController.js";
@@ -15,6 +16,7 @@ router.use(protect, authorizeRoles("driver"));
 router.get("/matches", requireApprovedDriverOnboarding, listMatchedRequests);
 router.get("/accepted", requireApprovedDriverOnboarding, getAcceptedDriverRequests);
 router.patch("/:id/accept", requireApprovedDriverOnboarding, acceptMatchedRequest);
+router.patch("/:id/step", requireApprovedDriverOnboarding, updateRideProgressStep);
 router.patch("/:id/reject", requireApprovedDriverOnboarding, rejectMatchedRequest);
 
 export default router;

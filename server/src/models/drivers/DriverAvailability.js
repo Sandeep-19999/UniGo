@@ -47,6 +47,7 @@ const driverAvailabilitySchema = new mongoose.Schema(
     currentLocation: { type: geoPointSchema, required: true },
     destination: { type: geoPointSchema, default: null },
     destinationLabel: { type: String, trim: true, default: "" },
+    destinationLabelNormalized: { type: String, trim: true, default: "", index: true },
     isOnline: { type: Boolean, default: false, index: true },
     status: { type: String, enum: STATUSES, default: "offline", index: true },
     notes: { type: String, trim: true, default: "" },
@@ -58,5 +59,6 @@ const driverAvailabilitySchema = new mongoose.Schema(
 
 driverAvailabilitySchema.index({ currentLocation: "2dsphere" });
 driverAvailabilitySchema.index({ destination: "2dsphere" });
+driverAvailabilitySchema.index({ isOnline: 1, destinationLabelNormalized: 1, vehicleType: 1, status: 1 });
 
 export default mongoose.model("DriverAvailability", driverAvailabilitySchema);

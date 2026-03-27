@@ -2,6 +2,15 @@ import mongoose from "mongoose";
 
 const STATUSES = ["pending", "accepted", "started", "completed", "cancelled"];
 const MATCHING_STATUSES = ["unmatched", "matched", "accepted", "expired"];
+const DRIVER_JOURNEY_STEPS = [
+  "awaiting_driver",
+  "assigned",
+  "arrived_at_pickup",
+  "rider_notified",
+  "trip_started",
+  "dropping_off",
+  "completed"
+];
 
 const pointSchema = new mongoose.Schema(
   {
@@ -95,6 +104,16 @@ const rideRequestSchema = new mongoose.Schema(
       enum: MATCHING_STATUSES,
       default: "unmatched",
       index: true
+    },
+    driverJourneyStep: {
+      type: String,
+      enum: DRIVER_JOURNEY_STEPS,
+      default: "awaiting_driver",
+      index: true
+    },
+    driverJourneyUpdatedAt: {
+      type: Date,
+      default: null
     },
     matchedDrivers: { type: [matchedDriverSchema], default: [] },
     rejectedByDrivers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],

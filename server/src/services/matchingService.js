@@ -7,6 +7,15 @@ function normalizeNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+export function normalizeDestinationText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function normalizeLatLng(input) {
   if (!input) return null;
 
@@ -57,13 +66,8 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function computeScore({ pickupDistanceKm, destinationDistanceKm }) {
-  const pickupScore = clamp(60 - pickupDistanceKm * 6, 0, 60);
-  const destinationScore = Number.isFinite(destinationDistanceKm)
-    ? clamp(40 - destinationDistanceKm * 4, 0, 40)
-    : 15;
-
-  return Math.round(pickupScore + destinationScore);
+function computeScore({ pickupDistanceKm }) {
+  return Math.round(clamp(100 - pickupDistanceKm * 7, 10, 100));
 }
 
 function requestedSeatCount(numberOfSeats) {
@@ -78,13 +82,14 @@ export async function matchDriversForRideRequest(rideRequestId, { session } = {}
   }
 
   const pickup = normalizeLatLng(rideRequest.pickupCoords);
-  const drop = normalizeLatLng(rideRequest.dropCoords);
   const seatsNeeded = requestedSeatCount(rideRequest.numberOfSeats);
+  const normalizedDropLocation = normalizeDestinationText(rideRequest.dropLocation);
 
   const availabilityQuery = {
     isOnline: true,
     status: { $in: ["online", "matched"] },
-    seatsAvailable: { $gte: seatsNeeded }
+    seatsAvailable: { $gte: seatsNeeded },
+    destinationLabelNormalized: normalizedDropLocation
   };
 
   if (rideRequest.vehicleType) {
@@ -103,22 +108,17 @@ export async function matchDriversForRideRequest(rideRequestId, { session } = {}
     if (rejectedDriverIds.has(driverId)) continue;
 
     const driverPoint = pointFromGeo(availability.currentLocation);
-    const destinationPoint = pointFromGeo(availability.destination);
     const pickupDistanceKm = pickup ? haversineKm(driverPoint, pickup) : 0;
-    const destinationDistanceKm = drop && destinationPoint ? haversineKm(destinationPoint, drop) : Number.POSITIVE_INFINITY;
 
     if (pickup && pickupDistanceKm > availability.maxPickupDistanceKm) continue;
-    if (drop && destinationPoint && destinationDistanceKm > availability.maxDestinationDistanceKm) continue;
 
     candidates.push({
       driver: availability.driver,
       vehicle: availability.vehicle?._id || availability.vehicle || null,
       availability: availability._id,
       pickupDistanceKm: Number.isFinite(pickupDistanceKm) ? Number(pickupDistanceKm.toFixed(2)) : 0,
-      destinationDistanceKm: Number.isFinite(destinationDistanceKm)
-        ? Number(destinationDistanceKm.toFixed(2))
-        : 0,
-      score: computeScore({ pickupDistanceKm, destinationDistanceKm }),
+      destinationDistanceKm: 0,
+      score: computeScore({ pickupDistanceKm }),
       matchedAt: new Date(),
       status: "pending"
     });
