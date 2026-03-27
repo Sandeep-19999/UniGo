@@ -6,6 +6,7 @@ import {
   acceptMatchedRequest,
   updateRideProgressStep,
   rejectMatchedRequest,
+  cancelAcceptedRide,
   getAcceptedDriverRequests
 } from "../../controllers/driver/driverRequestController.js";
 
@@ -18,5 +19,6 @@ router.get("/accepted", requireApprovedDriverOnboarding, getAcceptedDriverReques
 router.patch("/:id/accept", requireApprovedDriverOnboarding, acceptMatchedRequest);
 router.patch("/:id/step", requireApprovedDriverOnboarding, updateRideProgressStep);
 router.patch("/:id/reject", requireApprovedDriverOnboarding, rejectMatchedRequest);
+router.patch("/:id/cancel", requireApprovedDriverOnboarding, cancelAcceptedRide);
 
 export default router;

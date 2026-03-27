@@ -5,7 +5,8 @@ import {
   createRideRequest,
   getMyRideRequests,
   getRideRequestById,
-  cancelRideRequest
+  cancelRideRequest,
+  updatePassengerRideLocation
 } from "../../controllers/rides/passengerRideController.js";
 import {
   createBooking,
@@ -17,21 +18,18 @@ import {
 
 const router = Router();
 
-// Home endpoint
 router.get("/home", protect, authorizeRoles("user"), (req, res) => {
   res.json({ ok: true, message: "Passenger home access granted" });
 });
 
-// Browse available rides (driver rides)
 router.get("/available-rides", protect, authorizeRoles("user"), browseAvailableRides);
 
-// Ride request endpoints
 router.post("/rides", protect, authorizeRoles("user"), createRideRequest);
 router.get("/rides", protect, authorizeRoles("user"), getMyRideRequests);
 router.get("/rides/:id", protect, authorizeRoles("user"), getRideRequestById);
 router.put("/rides/:id/cancel", protect, authorizeRoles("user"), cancelRideRequest);
+router.patch("/rides/:id/location", protect, authorizeRoles("user"), updatePassengerRideLocation);
 
-// Booking endpoints
 router.post("/bookings", protect, authorizeRoles("user"), createBooking);
 router.get("/bookings", protect, authorizeRoles("user"), getPassengerBookings);
 router.get("/bookings/:id", protect, authorizeRoles("user"), getBookingById);

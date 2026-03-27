@@ -27,6 +27,7 @@ import BrowseDrivers from './pages/rides/BrowseDrivers';
 import MyBookings from './pages/rides/MyBookings';
 import RateDriver from './pages/rides/RateDriver';
 import PassengerRideHistory from './pages/rides/PassengerRideHistory';
+import DriverCashout from './pages/driver/DriverCashout';
 
 import Unauthorized from './pages/common/Unauthorized';
 import NotFound from './pages/common/NotFound';
@@ -168,6 +169,15 @@ export default function App() {
           element={
             <ProtectedRoute roles={['driver']} requireApprovedDriverOnboarding>
               <RideHistory />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/driver/cashout"
+          element={
+            <ProtectedRoute roles={['driver']} requireApprovedDriverOnboarding>
+              <DriverCashout />
             </ProtectedRoute>
           }
         />

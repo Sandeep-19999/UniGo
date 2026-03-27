@@ -9,7 +9,8 @@ const DRIVER_JOURNEY_STEPS = [
   "rider_notified",
   "trip_started",
   "dropping_off",
-  "completed"
+  "completed",
+  "cancelled"
 ];
 
 const pointSchema = new mongoose.Schema(
@@ -61,6 +62,8 @@ const rideRequestSchema = new mongoose.Schema(
     },
     pickupCoords: { type: pointSchema, default: null },
     dropCoords: { type: pointSchema, default: null },
+    passengerLiveLocation: { type: pointSchema, default: null },
+    passengerLiveLocationUpdatedAt: { type: Date, default: null },
     numberOfSeats: {
       type: Number,
       required: [true, "Number of seats is required"],
@@ -128,6 +131,14 @@ const rideRequestSchema = new mongoose.Schema(
       default: null
     },
     acceptedAt: { type: Date, default: null },
+    startedAt: { type: Date, default: null },
+    completedAt: { type: Date, default: null },
+    cancelledAt: { type: Date, default: null },
+    cancelledBy: {
+      type: String,
+      enum: ["passenger", "driver", "system", null],
+      default: null
+    },
     estimatedPrice: {
       type: Number,
       default: 0
@@ -146,6 +157,15 @@ const rideRequestSchema = new mongoose.Schema(
       type: Number,
       min: [0, "Estimated fare cannot be negative"],
       default: 0
+    },
+    finalFare: {
+      type: Number,
+      min: [0, "Final fare cannot be negative"],
+      default: 0
+    },
+    earningsCreditedAt: {
+      type: Date,
+      default: null
     }
   },
   { timestamps: true }
@@ -153,6 +173,7 @@ const rideRequestSchema = new mongoose.Schema(
 
 rideRequestSchema.index({ createdAt: -1 });
 rideRequestSchema.index({ acceptedBy: 1, status: 1 });
+rideRequestSchema.index({ passenger: 1, status: 1 });
 rideRequestSchema.index({ "matchedDrivers.driver": 1, status: 1 });
 
 export default mongoose.model("RideRequest", rideRequestSchema);

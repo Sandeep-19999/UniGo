@@ -11,6 +11,7 @@ import driverRideRoutes from "./routes/driver/rideRoutes.js";
 import onboardingRoutes from "./routes/driver/onboardingRoutes.js";
 import availabilityRoutes from "./routes/driver/availabilityRoutes.js";
 import driverRequestRoutes from "./routes/driver/requestRoutes.js";
+import driverEarningsRoutes from "./routes/driver/earningsRoutes.js";
 import testRoutes from "./routes/test/testRoutes.js";
 import ratingRoutes from "./routes/ratingRoutes.js";
 
@@ -61,6 +62,7 @@ export function createApp() {
   app.use("/api/driver/onboarding", onboardingRoutes);
   app.use("/api/driver/availability", availabilityRoutes);
   app.use("/api/driver/requests", driverRequestRoutes);
+  app.use("/api/driver/earnings", driverEarningsRoutes);
   app.use("/api/driver/vehicles", driverVehicleRoutes);
   app.use("/api/driver/rides", driverRideRoutes);
 
