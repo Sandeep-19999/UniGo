@@ -1,6 +1,5 @@
 import mongoose from 'mongoose';
 
-// Invoice Schema
 const invoiceSchema = new mongoose.Schema({
   invoiceNumber: {
     type: String,
@@ -19,7 +18,6 @@ const invoiceSchema = new mongoose.Schema({
   },
 });
 
-// Refund Schema
 const refundSchema = new mongoose.Schema({
   refundId: {
     type: String,
@@ -54,7 +52,6 @@ const refundSchema = new mongoose.Schema({
   notes: String,
 });
 
-// Payment Transaction Schema
 const paymentSchema = new mongoose.Schema(
   {
     transactionId: {
@@ -152,7 +149,25 @@ const paymentSchema = new mongoose.Schema(
   }
 );
 
-// Driver Earnings Schema
+const cashoutRequestSchema = new mongoose.Schema(
+  {
+    amount: { type: Number, required: true, min: 0 },
+    method: { type: String, trim: true, default: 'bank_transfer' },
+    accountHolderName: { type: String, trim: true, default: '' },
+    accountNumber: { type: String, trim: true, default: '' },
+    bankName: { type: String, trim: true, default: '' },
+    note: { type: String, trim: true, default: '' },
+    status: {
+      type: String,
+      enum: ['pending', 'approved', 'paid', 'rejected'],
+      default: 'pending'
+    },
+    requestedAt: { type: Date, default: Date.now },
+    processedAt: { type: Date, default: null }
+  },
+  { _id: true }
+);
+
 const driverEarningsSchema = new mongoose.Schema({
   driverId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -164,6 +179,14 @@ const driverEarningsSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  availableBalance: {
+    type: Number,
+    default: 0,
+  },
+  totalWithdrawn: {
+    type: Number,
+    default: 0,
+  },
   completedRides: {
     type: Number,
     default: 0,
@@ -171,10 +194,17 @@ const driverEarningsSchema = new mongoose.Schema({
   rideEarnings: [
     {
       rideId: mongoose.Schema.Types.ObjectId,
+      passengerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      routeLabel: { type: String, default: '' },
       amount: Number,
       earnedAt: Date,
+      status: { type: String, default: 'completed' }
     },
   ],
+  cashoutRequests: {
+    type: [cashoutRequestSchema],
+    default: []
+  },
   bonusEarnings: {
     type: Number,
     default: 0,
@@ -189,13 +219,13 @@ const driverEarningsSchema = new mongoose.Schema({
   },
 });
 
-// Create indexes for better query performance
 paymentSchema.index({ userId: 1 });
 paymentSchema.index({ rideId: 1 });
 paymentSchema.index({ driverId: 1 });
 paymentSchema.index({ paymentStatus: 1 });
 paymentSchema.index({ createdAt: -1 });
 paymentSchema.index({ transactionId: 1 });
+driverEarningsSchema.index({ driverId: 1, lastUpdated: -1 });
 
 const Payment = mongoose.model('Payment', paymentSchema);
 const DriverEarnings = mongoose.model('DriverEarnings', driverEarningsSchema);

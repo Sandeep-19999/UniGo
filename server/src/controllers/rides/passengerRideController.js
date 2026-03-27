@@ -112,6 +112,39 @@ export async function createRideRequest(req, res, next) {
   }
 }
 
+export async function updatePassengerRideLocation(req, res, next) {
+  try {
+    const { id } = req.params;
+    const raw = req.body?.currentLocation || {};
+    const coords = normalizeLatLng(raw);
+
+    if (!coords) {
+      return res.status(400).json({ message: "Valid currentLocation with lat/lng is required." });
+    }
+
+    const rideRequest = await RideRequest.findOne({
+      _id: id,
+      passenger: req.user._id,
+      status: { $in: ["pending", "accepted", "started"] }
+    });
+
+    if (!rideRequest) {
+      return res.status(404).json({ message: "Active ride request not found for this passenger." });
+    }
+
+    rideRequest.passengerLiveLocation = coords;
+    rideRequest.passengerLiveLocationUpdatedAt = new Date();
+    await rideRequest.save();
+
+    res.json({
+      message: "Passenger live location updated successfully.",
+      rideRequest
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function getMyRideRequests(req, res, next) {
   try {
     const rideRequests = await RideRequest.find({ passenger: req.user._id })
@@ -163,6 +196,8 @@ export async function cancelRideRequest(req, res, next) {
 
     rideRequest.status = "cancelled";
     rideRequest.matchingStatus = "expired";
+    rideRequest.cancelledAt = new Date();
+    rideRequest.cancelledBy = "passenger";
     await rideRequest.save();
     await rideRequest.populate("acceptedBy", "name email phone");
 

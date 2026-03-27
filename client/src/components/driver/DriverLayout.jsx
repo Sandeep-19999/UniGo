@@ -50,10 +50,22 @@ function HistoryIcon() {
   );
 }
 
+function CashoutIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 7h18v10H3z" />
+      <path d="M16 12h2" />
+      <path d="M7 12h5" />
+      <circle cx="9" cy="12" r="2" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS = [
   { label: "Dashboard", to: "/driver/dashboard", icon: DashboardIcon },
   { label: "Ride History", to: "/driver/history", icon: HistoryIcon },
-  { label: "Vehicle Details", to: "/driver/vehicles", icon: VehicleIcon }
+  { label: "Vehicle Details", to: "/driver/vehicles", icon: VehicleIcon },
+  { label: "Cashout", to: "/driver/cashout", icon: CashoutIcon }
 ];
 
 function SidebarLink({ item, onNavigate }) {
@@ -167,7 +179,7 @@ export default function DriverLayout({ title, subtitle, actions, children }) {
                   </svg>
                   <input
                     className="w-full bg-transparent text-sm text-slate-700 outline-none"
-                    placeholder="Search dashboard, ride history, vehicle details..."
+                    placeholder="Search dashboard, history, cashout, vehicle details..."
                   />
                 </div>
               </div>

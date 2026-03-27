@@ -37,7 +37,7 @@ export default function RideHistory() {
   );
 
   const totalEarnings = completedRides.reduce(
-    (sum, ride) => sum + Number(ride.estimatedFare ?? ride.estimatedPrice ?? 0),
+    (sum, ride) => sum + Number(ride.finalFare ?? ride.estimatedFare ?? ride.estimatedPrice ?? 0),
     0
   );
 
@@ -102,7 +102,7 @@ export default function RideHistory() {
                       <StatusBadge status={ride.status} />
                     </td>
                     <td className="capitalize">{String(ride.driverJourneyStep || "-").replace(/_/g, " ")}</td>
-                    <td>{fmtMoney(ride.estimatedFare ?? ride.estimatedPrice ?? 0)}</td>
+                    <td>{fmtMoney(ride.finalFare ?? ride.estimatedFare ?? ride.estimatedPrice ?? 0)}</td>
                   </tr>
                 ))}
 
