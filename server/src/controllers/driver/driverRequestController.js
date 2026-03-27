@@ -4,26 +4,52 @@ import DriverAvailability from "../../models/drivers/DriverAvailability.js";
 import Vehicle from "../../models/vehicles/Vehicle.js";
 import { matchDriversForRideRequest } from "../../services/matchingService.js";
 
+const NEXT_STEP_BY_CURRENT = {
+  assigned: ["arrived_at_pickup"],
+  arrived_at_pickup: ["rider_notified"],
+  rider_notified: ["trip_started"],
+  trip_started: ["dropping_off"],
+  dropping_off: ["completed"],
+  completed: []
+};
+
+const STATUS_BY_STEP = {
+  awaiting_driver: "pending",
+  assigned: "accepted",
+  arrived_at_pickup: "accepted",
+  rider_notified: "accepted",
+  trip_started: "started",
+  dropping_off: "started",
+  completed: "completed"
+};
+
 function extractDriverMatch(rideRequest, driverId) {
   return (rideRequest.matchedDrivers || []).find((item) => String(item.driver) === String(driverId)) || null;
 }
 
+function populateDriverRequestQuery(query) {
+  return query
+    .populate("passenger", "name email phone")
+    .populate("acceptedBy", "name email phone")
+    .populate("acceptedVehicle", "type plateNumber make model year seatCapacity")
+    .populate("matchedDrivers.driver", "name email phone")
+    .populate("matchedDrivers.vehicle", "type plateNumber make model year seatCapacity");
+}
+
 export async function listMatchedRequests(req, res, next) {
   try {
-    const rideRequests = await RideRequest.find({
-      status: "pending",
-      acceptedBy: null,
-      matchedDrivers: {
-        $elemMatch: {
-          driver: req.user._id,
-          status: "pending"
+    const rideRequests = await populateDriverRequestQuery(
+      RideRequest.find({
+        status: "pending",
+        acceptedBy: null,
+        matchedDrivers: {
+          $elemMatch: {
+            driver: req.user._id,
+            status: "pending"
+          }
         }
-      }
-    })
-      .populate("passenger", "name email phone")
-      .populate("matchedDrivers.driver", "name email phone")
-      .populate("matchedDrivers.vehicle", "type plateNumber make model year")
-      .sort({ createdAt: -1 });
+      }).sort({ createdAt: -1 })
+    );
 
     const items = rideRequests.map((rideRequest) => ({
       rideRequest,
@@ -79,14 +105,17 @@ export async function acceptMatchedRequest(req, res, next) {
     rideRequest.acceptedBy = req.user._id;
     rideRequest.acceptedVehicle = vehicle._id;
     rideRequest.acceptedAt = new Date();
+    rideRequest.driverJourneyStep = "assigned";
+    rideRequest.driverJourneyUpdatedAt = new Date();
     rideRequest.matchedDrivers = (rideRequest.matchedDrivers || []).map((item) => {
+      const plainItem = item.toObject?.() ?? item;
       if (String(item.driver) === String(req.user._id)) {
-        return { ...item.toObject?.() ?? item, vehicle: vehicle._id, status: "accepted", respondedAt: new Date() };
+        return { ...plainItem, vehicle: vehicle._id, status: "accepted", respondedAt: new Date() };
       }
       if (item.status === "pending") {
-        return { ...item.toObject?.() ?? item, status: "expired", respondedAt: new Date() };
+        return { ...plainItem, status: "expired", respondedAt: new Date() };
       }
-      return item;
+      return plainItem;
     });
 
     await rideRequest.save({ session });
@@ -97,10 +126,7 @@ export async function acceptMatchedRequest(req, res, next) {
 
     await session.commitTransaction();
 
-    const populated = await RideRequest.findById(rideRequest._id)
-      .populate("passenger", "name email phone")
-      .populate("acceptedBy", "name email phone")
-      .populate("acceptedVehicle", "type plateNumber make model year seatCapacity");
+    const populated = await populateDriverRequestQuery(RideRequest.findById(rideRequest._id));
 
     res.json({ message: "Ride request accepted successfully.", rideRequest: populated });
   } catch (err) {
@@ -108,6 +134,51 @@ export async function acceptMatchedRequest(req, res, next) {
     next(err);
   } finally {
     session.endSession();
+  }
+}
+
+export async function updateRideProgressStep(req, res, next) {
+  try {
+    const { id } = req.params;
+    const nextStep = String(req.body?.step || "").trim();
+
+    const rideRequest = await RideRequest.findOne({
+      _id: id,
+      acceptedBy: req.user._id,
+      status: { $in: ["accepted", "started"] }
+    });
+
+    if (!rideRequest) {
+      return res.status(404).json({ message: "Active ride not found for this driver." });
+    }
+
+    const currentStep = rideRequest.driverJourneyStep || "assigned";
+    const allowedNextSteps = NEXT_STEP_BY_CURRENT[currentStep] || [];
+
+    if (!allowedNextSteps.includes(nextStep)) {
+      return res.status(400).json({
+        message: `Invalid journey step transition: ${currentStep} → ${nextStep}`
+      });
+    }
+
+    rideRequest.driverJourneyStep = nextStep;
+    rideRequest.driverJourneyUpdatedAt = new Date();
+    rideRequest.status = STATUS_BY_STEP[nextStep] || rideRequest.status;
+
+    await rideRequest.save();
+
+    if (nextStep === "completed") {
+      await DriverAvailability.findOneAndUpdate(
+        { driver: req.user._id, isOnline: true },
+        { $set: { status: "online" } }
+      );
+    }
+
+    const populated = await populateDriverRequestQuery(RideRequest.findById(rideRequest._id));
+
+    res.json({ message: "Ride progress updated successfully.", rideRequest: populated });
+  } catch (err) {
+    next(err);
   }
 }
 
@@ -132,10 +203,11 @@ export async function rejectMatchedRequest(req, res, next) {
     }
 
     rideRequest.matchedDrivers = (rideRequest.matchedDrivers || []).map((item) => {
+      const plainItem = item.toObject?.() ?? item;
       if (String(item.driver) === String(req.user._id) && item.status === "pending") {
-        return { ...item.toObject?.() ?? item, status: "rejected", respondedAt: new Date() };
+        return { ...plainItem, status: "rejected", respondedAt: new Date() };
       }
-      return item;
+      return plainItem;
     });
 
     if (!(rideRequest.rejectedByDrivers || []).some((driverId) => String(driverId) === String(req.user._id))) {
@@ -145,9 +217,7 @@ export async function rejectMatchedRequest(req, res, next) {
     await rideRequest.save();
     await matchDriversForRideRequest(rideRequest._id);
 
-    const refreshed = await RideRequest.findById(id)
-      .populate("passenger", "name email phone")
-      .populate("matchedDrivers.driver", "name email phone");
+    const refreshed = await populateDriverRequestQuery(RideRequest.findById(id));
 
     res.json({ message: "Ride request rejected.", rideRequest: refreshed });
   } catch (err) {
@@ -157,10 +227,9 @@ export async function rejectMatchedRequest(req, res, next) {
 
 export async function getAcceptedDriverRequests(req, res, next) {
   try {
-    const rideRequests = await RideRequest.find({ acceptedBy: req.user._id })
-      .populate("passenger", "name email phone")
-      .populate("acceptedVehicle", "type plateNumber make model year seatCapacity")
-      .sort({ acceptedAt: -1, createdAt: -1 });
+    const rideRequests = await populateDriverRequestQuery(
+      RideRequest.find({ acceptedBy: req.user._id }).sort({ acceptedAt: -1, createdAt: -1 })
+    );
 
     res.json({ rideRequests });
   } catch (err) {

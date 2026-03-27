@@ -23,7 +23,23 @@ const driverProfileSchema = new mongoose.Schema(
     },
     recommendedNextStep: { type: String, trim: true, default: "vehicle_information" },
     progressPercent: { type: Number, min: 0, max: 100, default: 0 },
-    approvedAt: { type: Date, default: null }
+    approvedAt: { type: Date, default: null },
+
+    driverCurrentDestination: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+    driverCurrentDestinationNormalized: {
+      type: String,
+      trim: true,
+      default: "",
+      index: true
+    },
+    driverCurrentDestinationUpdatedAt: {
+      type: Date,
+      default: null
+    }
   },
   { timestamps: true }
 );

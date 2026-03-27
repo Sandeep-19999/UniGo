@@ -1,8 +1,10 @@
+import "../../../styles/driverRideDashboard.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import L from "leaflet";
 import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import { api } from "../../../api/axios";
+import RideStepProgress from "../../../components/driver/RideStepProgress";
 import { useAuth } from "../../../context/AuthContext";
 
 const FALLBACK_CENTER = [6.9068, 79.8706];
@@ -23,6 +25,12 @@ function formatMoney(value) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })}`;
+}
+
+function formatDistance(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "Distance unavailable";
+  return `${numeric.toFixed(1)} km away`;
 }
 
 function initials(name = "Driver") {
@@ -72,38 +80,85 @@ function getBrowserLocation() {
   });
 }
 
+function computeRideMetrics(acceptedRequests) {
+  const completedRequests = acceptedRequests.filter((ride) => ride.status === "completed");
+  const activeRequests = acceptedRequests.filter((ride) => ["accepted", "started"].includes(ride.status));
+
+  const totalEarnings = completedRequests.reduce(
+    (sum, ride) => sum + Number(ride.estimatedFare ?? ride.estimatedPrice ?? 0),
+    0
+  );
+
+  return {
+    totalEarnings,
+    totalCompletedRides: completedRequests.length,
+    activeRideCount: activeRequests.length
+  };
+}
+
 export default function DriverDashboard() {
   const { user } = useAuth();
   const mapRef = useRef(null);
   const watchIdRef = useRef(null);
+  const lastLocationSyncRef = useRef(0);
 
   const [isOnline, setIsOnline] = useState(false);
   const [followMe, setFollowMe] = useState(true);
   const [position, setPosition] = useState(null);
   const [geoError, setGeoError] = useState("");
-  const [earnings, setEarnings] = useState({
-    totalEarnings: 0,
-    totalCompletedRides: 0
+  const [profile, setProfile] = useState({
+    driverCurrentDestination: "",
+    driverCurrentDestinationUpdatedAt: null
   });
-  const [rides, setRides] = useState([]);
+  const [destinationDraft, setDestinationDraft] = useState("");
+  const [destinationModalOpen, setDestinationModalOpen] = useState(false);
+  const [destinationBusy, setDestinationBusy] = useState(false);
+  const [destinationError, setDestinationError] = useState("");
+  const [matchedRequests, setMatchedRequests] = useState([]);
+  const [acceptedRequests, setAcceptedRequests] = useState([]);
+  const [requestBusyId, setRequestBusyId] = useState("");
+  const [progressBusy, setProgressBusy] = useState(false);
+  const [loadingState, setLoadingState] = useState(true);
+  const [actionError, setActionError] = useState("");
 
-  const loadDashboardData = useCallback(async () => {
+  const currentDestination = profile.driverCurrentDestination || "";
+
+  const activeRide = useMemo(
+    () => acceptedRequests.find((ride) => ["accepted", "started"].includes(ride.status)) || null,
+    [acceptedRequests]
+  );
+
+  const rideMetrics = useMemo(() => computeRideMetrics(acceptedRequests), [acceptedRequests]);
+
+  const loadDashboardData = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoadingState(true);
+
     try {
-      const [earningsRes, ridesRes] = await Promise.all([
-        api.get("/driver/rides/earnings/summary"),
-        api.get("/driver/rides")
+      const [availabilityRes, matchesRes, acceptedRes] = await Promise.all([
+        api.get("/driver/availability/me"),
+        api.get("/driver/requests/matches").catch(() => ({ data: { items: [] } })),
+        api.get("/driver/requests/accepted").catch(() => ({ data: { rideRequests: [] } }))
       ]);
 
-      setEarnings(
-        earningsRes.data || {
-          totalEarnings: 0,
-          totalCompletedRides: 0
-        }
-      );
+      const availability = availabilityRes.data?.availability || null;
+      const nextProfile = availabilityRes.data?.profile || {
+        driverCurrentDestination: "",
+        driverCurrentDestinationUpdatedAt: null
+      };
 
-      setRides(ridesRes.data?.rides || []);
-    } catch {
-      // keep UI alive
+      setProfile(nextProfile);
+      setDestinationDraft((current) => current || nextProfile.driverCurrentDestination || "");
+      setIsOnline(Boolean(availability?.isOnline));
+      setMatchedRequests(matchesRes.data?.items || []);
+      setAcceptedRequests(acceptedRes.data?.rideRequests || []);
+
+      if (!nextProfile.driverCurrentDestination && !availability?.isOnline) {
+        setDestinationModalOpen(true);
+      }
+    } catch (error) {
+      setActionError(error?.response?.data?.message || "Failed to load driver dashboard.");
+    } finally {
+      if (!silent) setLoadingState(false);
     }
   }, []);
 
@@ -111,11 +166,26 @@ export default function DriverDashboard() {
     loadDashboardData();
 
     const timer = setInterval(() => {
-      loadDashboardData();
+      loadDashboardData({ silent: true });
     }, 10000);
 
     return () => clearInterval(timer);
   }, [loadDashboardData]);
+
+  const syncLiveLocation = useCallback(async (coords) => {
+    const now = Date.now();
+    if (now - lastLocationSyncRef.current < 8000) return;
+
+    lastLocationSyncRef.current = now;
+
+    try {
+      await api.patch("/driver/availability/location", {
+        currentLocation: { lat: coords[0], lng: coords[1] }
+      });
+    } catch {
+      // Keep the UI responsive even if a sync call fails.
+    }
+  }, []);
 
   useEffect(() => {
     function stopTracking() {
@@ -127,19 +197,21 @@ export default function DriverDashboard() {
 
     if (!isOnline) {
       stopTracking();
-      return;
+      return undefined;
     }
 
     if (!navigator.geolocation) {
       setGeoError("Geolocation is not supported in this browser.");
-      return;
+      return undefined;
     }
 
     setGeoError("");
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        setPosition([pos.coords.latitude, pos.coords.longitude]);
+        const coords = [pos.coords.latitude, pos.coords.longitude];
+        setPosition(coords);
+        syncLiveLocation(coords);
       },
       () => {
         setGeoError("Location access failed. Please allow browser location.");
@@ -152,33 +224,117 @@ export default function DriverDashboard() {
     );
 
     return stopTracking;
-  }, [isOnline]);
+  }, [isOnline, syncLiveLocation]);
 
   const center = position || FALLBACK_CENTER;
 
-  const activeRideCount = useMemo(
-    () => rides.filter((ride) => ["pending", "ongoing"].includes(ride.status)).length,
-    [rides]
-  );
+  async function handleSaveDestination() {
+    const cleaned = destinationDraft.trim();
+    setDestinationError("");
 
-  async function handleToggleOnline() {
-    if (!isOnline && !position) {
-      try {
-        const current = await getBrowserLocation();
-        setPosition(current);
-      } catch (error) {
-        setGeoError(error.message || "Location access failed. Please allow browser location.");
-        return;
-      }
+    if (cleaned.length < 3) {
+      setDestinationError("Destination must be at least 3 characters long.");
+      return;
     }
 
-    setIsOnline((prev) => !prev);
+    setDestinationBusy(true);
+
+    try {
+      const { data } = await api.patch("/driver/availability/destination", {
+        destinationLabel: cleaned
+      });
+
+      const nextProfile = data?.profile || {
+        driverCurrentDestination: cleaned,
+        driverCurrentDestinationUpdatedAt: new Date().toISOString()
+      };
+
+      setProfile(nextProfile);
+      setDestinationDraft(nextProfile.driverCurrentDestination || cleaned);
+      setDestinationModalOpen(false);
+      setActionError("");
+      await loadDashboardData({ silent: true });
+    } catch (error) {
+      setDestinationError(error?.response?.data?.message || "Failed to save destination.");
+    } finally {
+      setDestinationBusy(false);
+    }
+  }
+
+  async function handleToggleOnline() {
+    setActionError("");
+    setGeoError("");
+
+    if (isOnline) {
+      try {
+        await api.patch("/driver/availability/go-offline");
+        setIsOnline(false);
+        await loadDashboardData({ silent: true });
+      } catch (error) {
+        setActionError(error?.response?.data?.message || "Failed to switch offline.");
+      }
+      return;
+    }
+
+    if (!currentDestination) {
+      setDestinationModalOpen(true);
+      setActionError("Save your current destination before going online.");
+      return;
+    }
+
+    try {
+      const current = position || (await getBrowserLocation());
+      setPosition(current);
+
+      await api.post("/driver/availability/go-online", {
+        currentLocation: { lat: current[0], lng: current[1] }
+      });
+
+      setIsOnline(true);
+      await loadDashboardData({ silent: true });
+    } catch (error) {
+      setActionError(error?.response?.data?.message || error.message || "Failed to go online.");
+    }
+  }
+
+  async function handleAcceptRequest(item) {
+    setRequestBusyId(item?.rideRequest?._id || "");
+    setActionError("");
+
+    try {
+      await api.patch(`/driver/requests/${item.rideRequest._id}/accept`);
+      await loadDashboardData({ silent: true });
+    } catch (error) {
+      setActionError(error?.response?.data?.message || "Failed to accept ride request.");
+    } finally {
+      setRequestBusyId("");
+    }
+  }
+
+  async function handleAdvanceStep(nextStep) {
+    if (!activeRide?._id) return;
+
+    setProgressBusy(true);
+    setActionError("");
+
+    try {
+      await api.patch(`/driver/requests/${activeRide._id}/step`, { step: nextStep });
+      await loadDashboardData({ silent: true });
+    } catch (error) {
+      setActionError(error?.response?.data?.message || "Failed to update ride progress.");
+    } finally {
+      setProgressBusy(false);
+    }
   }
 
   function recenterMap() {
     if (mapRef.current && position) {
       mapRef.current.flyTo(position, 14, { duration: 1.1 });
     }
+  }
+
+  if (loadingState) {
+    return <div className="driver-home-loading">Loading driver dashboard...</div>;
   }
 
   return (
@@ -199,9 +355,12 @@ export default function DriverDashboard() {
           <div className="driver-home-avatar">{initials(user?.name || "Driver")}</div>
         </div>
 
-        <div className="driver-home-earnings-pill">
-          {formatMoney(earnings.totalEarnings || 0)}
-        </div>
+        <div className="driver-home-earnings-pill">{formatMoney(rideMetrics.totalEarnings)}</div>
+      </div>
+
+      <div className="driver-home-destination-pill">
+        <span className="driver-home-destination-label">Destination</span>
+        <strong>{currentDestination || "Not saved yet"}</strong>
       </div>
 
       <div className="driver-home-right-buttons">
@@ -214,12 +373,7 @@ export default function DriverDashboard() {
           {followMe ? "◎" : "◌"}
         </button>
 
-        <button
-          type="button"
-          className="driver-home-fab"
-          onClick={recenterMap}
-          title="Re-center"
-        >
+        <button type="button" className="driver-home-fab" onClick={recenterMap} title="Re-center">
           ⌖
         </button>
       </div>
@@ -234,7 +388,7 @@ export default function DriverDashboard() {
         </button>
       </div>
 
-      <div className="driver-home-sheet">
+      <div className="driver-home-sheet driver-home-sheet-expanded">
         <div className="driver-home-sheet-handle" />
 
         <div className={`driver-home-sheet-status ${isOnline ? "online" : "offline"}`}>
@@ -242,34 +396,171 @@ export default function DriverDashboard() {
           {isOnline ? "Online" : "Offline"}
         </div>
 
-        <div className="driver-home-sheet-links">
-          <Link to="/driver/rides" className="driver-home-sheet-link">
-            Rides
-          </Link>
-          <Link to="/driver/vehicles" className="driver-home-sheet-link">
-            Vehicles
+        <div className="driver-home-sheet-links driver-home-sheet-links-three">
+          <Link to="/driver/dashboard" className="driver-home-sheet-link">
+            Dashboard
           </Link>
           <Link to="/driver/history" className="driver-home-sheet-link">
-            History
+            Ride History
           </Link>
-          <Link to="/driver/directional-hire" className="driver-home-sheet-link">
-            Hire
+          <Link to="/driver/vehicles" className="driver-home-sheet-link">
+            Vehicle Details
           </Link>
         </div>
 
-        <div className="driver-home-mini-stats">
+        <div className="driver-home-mini-stats driver-home-mini-stats-visible">
           <div className="driver-home-mini-card">
             <span>Active rides</span>
-            <strong>{activeRideCount}</strong>
+            <strong>{rideMetrics.activeRideCount}</strong>
           </div>
           <div className="driver-home-mini-card">
             <span>Completed</span>
-            <strong>{earnings.totalCompletedRides || 0}</strong>
+            <strong>{rideMetrics.totalCompletedRides}</strong>
           </div>
         </div>
 
+        <div className="driver-home-content-stack">
+          <div className="driver-home-destination-card">
+            <div>
+              <div className="driver-home-card-kicker">Driver route</div>
+              <strong>{currentDestination || "Destination not saved yet"}</strong>
+              <p>The driver goes online only after the current destination is saved to the database.</p>
+            </div>
+            <button type="button" className="driver-btn-secondary" onClick={() => setDestinationModalOpen(true)}>
+              Edit destination
+            </button>
+          </div>
+
+          {activeRide ? (
+            <div className="driver-home-active-ride-card">
+              <div className="driver-home-active-ride-head">
+                <div>
+                  <div className="driver-home-card-kicker">Active trip</div>
+                  <h3>{activeRide.passenger?.name || "Passenger"}</h3>
+                  <p>
+                    {activeRide.pickupLocation} → {activeRide.dropLocation}
+                  </p>
+                </div>
+                <div className="driver-home-active-fare">
+                  {formatMoney(activeRide.estimatedFare ?? activeRide.estimatedPrice ?? 0)}
+                </div>
+              </div>
+
+              <div className="driver-home-active-ride-meta">
+                <div>
+                  <span>Pickup</span>
+                  <strong>{activeRide.pickupLocation}</strong>
+                </div>
+                <div>
+                  <span>Drop</span>
+                  <strong>{activeRide.dropLocation}</strong>
+                </div>
+                <div>
+                  <span>Status</span>
+                  <strong className="capitalize">{activeRide.status}</strong>
+                </div>
+                <div>
+                  <span>Distance</span>
+                  <strong>{Number(activeRide.distanceKm || 0).toFixed(1)} km</strong>
+                </div>
+              </div>
+
+              <RideStepProgress
+                currentStep={activeRide.driverJourneyStep || "assigned"}
+                busy={progressBusy}
+                onAdvance={handleAdvanceStep}
+              />
+            </div>
+          ) : matchedRequests.length > 0 ? (
+            <div className="driver-home-request-list">
+              {matchedRequests.slice(0, 3).map((item) => (
+                <div key={item.rideRequest._id} className="driver-home-request-card">
+                  <div className="driver-home-request-card-head">
+                    <div>
+                      <div className="driver-home-card-kicker">Matched ride request</div>
+                      <h3>{item.rideRequest.passenger?.name || "Passenger"}</h3>
+                    </div>
+                    <div className="driver-home-request-distance">
+                      {formatDistance(item.myMatch?.pickupDistanceKm)}
+                    </div>
+                  </div>
+
+                  <div className="driver-home-request-route">
+                    <div>
+                      <span>Pickup Location</span>
+                      <strong>{item.rideRequest.pickupLocation}</strong>
+                    </div>
+                    <div>
+                      <span>Drop Location</span>
+                      <strong>{item.rideRequest.dropLocation}</strong>
+                    </div>
+                    <div>
+                      <span>Estimated Fare</span>
+                      <strong>{formatMoney(item.rideRequest.estimatedFare ?? item.rideRequest.estimatedPrice ?? 0)}</strong>
+                    </div>
+                    <div>
+                      <span>Seat request</span>
+                      <strong>{Number(item.rideRequest.numberOfSeats || 0) || "Any"}</strong>
+                    </div>
+                  </div>
+
+                  <div className="driver-home-request-card-actions">
+                    <button
+                      type="button"
+                      className="driver-btn-primary"
+                      disabled={requestBusyId === item.rideRequest._id}
+                      onClick={() => handleAcceptRequest(item)}
+                    >
+                      {requestBusyId === item.rideRequest._id ? "Accepting..." : "Accept"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="driver-home-empty-card">
+              <div className="driver-home-card-kicker">Ride queue</div>
+              <h3>No matched ride requests yet</h3>
+              <p>
+                Go online with your saved destination. Matching runs only when the passenger drop location matches your current destination.
+              </p>
+            </div>
+          )}
+        </div>
+
         {geoError ? <div className="driver-home-error">{geoError}</div> : null}
+        {actionError ? <div className="driver-home-error">{actionError}</div> : null}
       </div>
+
+      {destinationModalOpen ? (
+        <div className="driver-home-modal-backdrop">
+          <div className="driver-home-modal">
+            <div className="driver-home-modal-kicker">Where are you going?</div>
+            <h2>Save driver destination</h2>
+            <p>
+              Enter the destination you are heading to. This is saved as <strong>driverCurrentDestination</strong> and used for ride matching.
+            </p>
+
+            <input
+              className="driver-home-modal-input"
+              value={destinationDraft}
+              onChange={(event) => setDestinationDraft(event.target.value)}
+              placeholder="Example: Malabe"
+            />
+
+            {destinationError ? <div className="driver-home-modal-error">{destinationError}</div> : null}
+
+            <div className="driver-home-modal-actions">
+              <button type="button" className="driver-btn-secondary" onClick={() => setDestinationModalOpen(false)}>
+                Close
+              </button>
+              <button type="button" className="driver-btn-primary" disabled={destinationBusy} onClick={handleSaveDestination}>
+                {destinationBusy ? "Saving..." : "Save destination"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
