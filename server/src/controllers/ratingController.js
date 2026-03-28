@@ -1,5 +1,5 @@
 import Rating from "../models/Rating.js";
-import Booking from "../models/rides/Booking.js";
+import RideRequest from "../models/rides/RideRequest.js";
 import User from "../models/users/User.js";
 
 // Create a rating for a completed booking
@@ -8,58 +8,90 @@ export async function createRating(req, res, next) {
     const { bookingId, rating, comment, isAnonymous } = req.body;
     const passengerId = req.user.id;
 
+    // Validate required fields
     if (!bookingId || rating === undefined) {
       return res.status(400).json({ message: "bookingId and rating are required" });
     }
 
+    // Validate rating value
     if (rating < 1 || rating > 5) {
       return res.status(400).json({ message: "Rating must be between 1 and 5" });
     }
 
-    // Check if booking exists and is completed
-    const booking = await Booking.findById(bookingId).populate("ride");
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
+    // Validate comment (required, min 3 chars, max 300 chars)
+    if (!comment) {
+      return res.status(400).json({ message: "Comment is required" });
     }
 
-    if (booking.status !== "completed") {
-      return res.status(400).json({ message: "Can only rate completed bookings" });
+    const trimmedComment = String(comment).trim();
+    if (trimmedComment.length < 3) {
+      return res.status(400).json({ message: "Comment must be at least 3 characters" });
     }
 
-    if (booking.passenger.toString() !== passengerId) {
-      return res.status(403).json({ message: "Can only rate your own bookings" });
+    if (trimmedComment.length > 300) {
+      return res.status(400).json({ message: "Comment cannot exceed 300 characters" });
     }
 
-    // Check if rating already exists
-    const existingRating = await Rating.findOne({ booking: bookingId });
+    // Check if ride request exists and is completed
+    const rideRequest = await RideRequest.findById(bookingId);
+    if (!rideRequest) {
+      return res.status(404).json({ message: "Ride request not found" });
+    }
+
+    if (rideRequest.status !== "completed") {
+      return res.status(400).json({ message: "Can only rate completed rides" });
+    }
+
+    if (rideRequest.passenger.toString() !== passengerId) {
+      return res.status(403).json({ message: "Can only rate your own rides" });
+    }
+
+    if (!rideRequest.acceptedBy) {
+      return res.status(400).json({ message: "No driver accepted this ride" });
+    }
+
+    // Check if rating already exists and update it
+    let existingRating = await Rating.findOne({ rideRequest: bookingId });
+    
     if (existingRating) {
-      return res.status(409).json({ message: "Booking already has a rating" });
+      // Update existing rating
+      existingRating.rating = rating;
+      existingRating.comment = trimmedComment;
+      await existingRating.save();
+      
+      await existingRating.populate([
+        { path: "passenger", select: "name email" },
+        { path: "driver", select: "name email" },
+        { path: "rideRequest", select: "_id status" }
+      ]);
+
+      return res.status(200).json({ message: "Rating updated successfully", rating: existingRating });
     }
 
-    // Get driver from ride
-    const ride = booking.ride;
-    if (!ride || !ride.driver) {
-      return res.status(400).json({ message: "Ride or driver not found" });
+    // Create new rating if doesn't exist
+    try {
+      const newRating = await Rating.create({
+        rideRequest: bookingId,
+        passenger: passengerId,
+        driver: rideRequest.acceptedBy,
+        rating,
+        comment: trimmedComment
+      });
+
+      await newRating.populate([
+        { path: "passenger", select: "name email" },
+        { path: "driver", select: "name email" },
+        { path: "rideRequest", select: "_id status" }
+      ]);
+
+      res.status(201).json({ message: "Rating created successfully", rating: newRating });
+    } catch (mongoErr) {
+      // Handle E11000 duplicate key error
+      if (mongoErr.code === 11000) {
+        return res.status(409).json({ message: "You have already rated this booking" });
+      }
+      throw mongoErr;
     }
-
-    // Create rating
-    const newRating = await Rating.create({
-      booking: bookingId,
-      passenger: passengerId,
-      driver: ride.driver,
-      ride: ride._id,
-      rating,
-      comment: comment ? String(comment).trim() : "",
-      isAnonymous: isAnonymous || false
-    });
-
-    await newRating.populate([
-      { path: "passenger", select: "name email" },
-      { path: "driver", select: "name email" },
-      { path: "booking" }
-    ]);
-
-    res.status(201).json({ message: "Rating created successfully", rating: newRating });
   } catch (err) {
     next(err);
   }
@@ -72,7 +104,7 @@ export async function getDriverRatings(req, res, next) {
 
     const ratings = await Rating.find({ driver: driverId })
       .populate("passenger", "name")
-      .populate("booking")
+      .populate("rideRequest", "_id status")
       .sort({ createdAt: -1 });
 
     const totalRatings = ratings.length;
@@ -91,15 +123,15 @@ export async function getDriverRatings(req, res, next) {
   }
 }
 
-// Get rating for a specific booking
+// Get rating for a specific ride request
 export async function getRatingByBooking(req, res, next) {
   try {
     const { bookingId } = req.params;
 
-    const rating = await Rating.findOne({ booking: bookingId }).populate([
+    const rating = await Rating.findOne({ rideRequest: bookingId }).populate([
       { path: "passenger", select: "name email" },
       { path: "driver", select: "name email" },
-      { path: "booking" }
+      { path: "rideRequest", select: "_id status" }
     ]);
 
     if (!rating) {
@@ -128,12 +160,24 @@ export async function updateRating(req, res, next) {
       return res.status(403).json({ message: "Can only update your own ratings" });
     }
 
+    // Validate rating if provided
     if (rating && (rating < 1 || rating > 5)) {
       return res.status(400).json({ message: "Rating must be between 1 and 5" });
     }
 
+    // Validate comment if provided
+    if (comment !== undefined) {
+      const trimmedComment = String(comment).trim();
+      if (trimmedComment.length < 3) {
+        return res.status(400).json({ message: "Comment must be at least 3 characters" });
+      }
+      if (trimmedComment.length > 300) {
+        return res.status(400).json({ message: "Comment cannot exceed 300 characters" });
+      }
+      existingRating.comment = trimmedComment;
+    }
+
     if (rating) existingRating.rating = rating;
-    if (comment !== undefined) existingRating.comment = String(comment).trim();
 
     await existingRating.save();
     await existingRating.populate([
@@ -147,26 +191,30 @@ export async function updateRating(req, res, next) {
   }
 }
 
-// Check if passenger can rate this booking
+// Check if passenger can rate this ride request
 export async function canRateBooking(req, res, next) {
   try {
     const { bookingId } = req.params;
     const passengerId = req.user.id;
 
-    const booking = await Booking.findById(bookingId);
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
+    const rideRequest = await RideRequest.findById(bookingId);
+    if (!rideRequest) {
+      return res.status(404).json({ message: "Ride request not found" });
     }
 
-    if (booking.passenger.toString() !== passengerId) {
-      return res.json({ canRate: false, reason: "Not your booking" });
+    if (rideRequest.passenger.toString() !== passengerId) {
+      return res.json({ canRate: false, reason: "Not your ride" });
     }
 
-    if (booking.status !== "completed") {
-      return res.json({ canRate: false, reason: "Booking not completed" });
+    if (rideRequest.status !== "completed") {
+      return res.json({ canRate: false, reason: "Ride not completed" });
     }
 
-    const existingRating = await Rating.findOne({ booking: bookingId });
+    if (!rideRequest.acceptedBy) {
+      return res.json({ canRate: false, reason: "No driver accepted this ride" });
+    }
+
+    const existingRating = await Rating.findOne({ rideRequest: bookingId });
     if (existingRating) {
       return res.json({ canRate: false, reason: "Already rated" });
     }
@@ -176,3 +224,50 @@ export async function canRateBooking(req, res, next) {
     next(err);
   }
 }
+
+// Get all ratings - Admin only
+// DEPRECATED: Rating management feature removed from admin dashboard
+// export async function getAllRatings(req, res, next) {
+//   try {
+//     const ratings = await Rating.find()
+//       .populate("passenger", "name email")
+//       .populate("driver", "name email")
+//       .populate("rideRequest", "pickupLocation dropLocation status")
+//       .sort({ createdAt: -1 });
+
+//     res.json({
+//       message: "All ratings retrieved successfully",
+//       total: ratings.length,
+//       ratings
+//     });
+//   } catch (err) {
+//     next(err);
+//   }
+// }
+
+// Delete a rating - Admin only
+// DEPRECATED: Rating management feature removed from admin dashboard
+// export async function deleteRating(req, res, next) {
+//   try {
+//     const { ratingId } = req.params;
+
+//     // Validate ratingId
+//     if (!ratingId) {
+//       return res.status(400).json({ message: "Rating ID is required" });
+//     }
+
+//     // Find and delete the rating
+//     const rating = await Rating.findByIdAndDelete(ratingId);
+
+//     if (!rating) {
+//       return res.status(404).json({ message: "Rating not found" });
+//     }
+
+//     res.json({
+//       message: "Rating deleted successfully",
+//       ratingId: ratingId
+//     });
+//   } catch (err) {
+//     next(err);
+//   }
+// }

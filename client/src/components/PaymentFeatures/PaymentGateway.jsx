@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { api } from "../../api/axios";
 import { DEFAULT_CURRENCY, formatCurrency } from "../../utils/paymentHelpers";
 
@@ -10,7 +10,7 @@ function randomObjectId() {
   );
 }
 
-export default function PaymentGateway() {
+export default function PaymentGateway({ bookingData = {} }) {
   const [formData, setFormData] = useState({
     amount: "",
     paymentMethod: "Credit Card",
@@ -22,6 +22,17 @@ export default function PaymentGateway() {
 
   const [loading, setLoading] = useState(false);
   const [paymentResult, setPaymentResult] = useState(null);
+
+  // Prefill form with booking data if available
+  useEffect(() => {
+    if (bookingData?.estimatedFare || bookingData?.paymentMethod) {
+      setFormData((prev) => ({
+        ...prev,
+        amount: bookingData.estimatedFare ? String(bookingData.estimatedFare) : prev.amount,
+        paymentMethod: bookingData.paymentMethod === "cash" ? "Cash on Delivery" : (bookingData.paymentMethod || "Credit Card"),
+      }));
+    }
+  }, [bookingData]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -41,6 +52,7 @@ export default function PaymentGateway() {
         amount: parseFloat(formData.amount),
         currency: DEFAULT_CURRENCY,
         paymentMethod: formData.paymentMethod,
+        bookingId: bookingData?.bookingId || undefined,
         rideId: localStorage.getItem("rideId") || randomObjectId(),
         driverId: localStorage.getItem("driverId") || randomObjectId(),
         fareBreakdown: {

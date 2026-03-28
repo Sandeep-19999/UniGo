@@ -7,17 +7,26 @@ export default function MyBookings() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const watchIdRef = useRef(null);
+
+  // Add error boundary
+  if (error && !loading && !bookings) {
+    console.error("❌ Critical render error:", error);
+  }
 
   useEffect(() => {
     let active = true;
 
     const fetchBookings = async (silent = false) => {
       try {
+        console.log("🔵 Fetching bookings...");
         if (!silent) setLoading(true);
         const { data } = await api.get("/passenger/rides");
+        console.log("✅ Bookings fetched:", data);
         if (active) setBookings(data.rideRequests || []);
       } catch (err) {
+        console.error("❌ Error fetching bookings:", err);
         if (active) setError(err.response?.data?.message || "Failed to load bookings");
       } finally {
         if (!silent && active) setLoading(false);
@@ -80,8 +89,17 @@ export default function MyBookings() {
     }
   };
 
-  const handleRateDriver = (bookingId) => {
-    navigate(`/rides/rate/${bookingId}`);
+  const handlePayment = (booking) => {
+    navigate("/payments", {
+      state: {
+        bookingId: booking._id,
+        pickupLocation: booking.pickupLocation,
+        dropLocation: booking.dropLocation,
+        paymentMethod: booking.paymentMethod,
+        estimatedFare: getDisplayFare(booking),
+        bookingDetails: booking
+      }
+    });
   };
 
   const getStatusColor = (status) => {
@@ -106,6 +124,30 @@ export default function MyBookings() {
     if (parsedSeats === 0) return "Any";
     if ([1, 2, 3].includes(parsedSeats)) return `${parsedSeats}+`;
     return "N/A";
+  };
+
+  const calculateFareFromDistance = (distanceKm, vehicleType = "car") => {
+    if (!distanceKm || distanceKm <= 0) return 0;
+    const ratePerKm = vehicleType === "bike" ? 40 : 60;
+    return Number((distanceKm * ratePerKm).toFixed(2));
+  };
+
+  const getDisplayFare = (booking) => {
+    // Priority: finalFare > estimatedFare > estimatedPrice > recalculate from distanceKm
+    if (booking.finalFare && booking.finalFare > 0) {
+      return booking.finalFare;
+    }
+    if (booking.estimatedFare && booking.estimatedFare > 0) {
+      return booking.estimatedFare;
+    }
+    if (booking.estimatedPrice && booking.estimatedPrice > 0) {
+      return booking.estimatedPrice;
+    }
+    // Fallback: calculate from saved distance
+    if (booking.distanceKm && booking.distanceKm > 0) {
+      return calculateFareFromDistance(booking.distanceKm, booking.vehicleType);
+    }
+    return 0;
   };
 
   if (loading) {
@@ -135,6 +177,12 @@ export default function MyBookings() {
           </div>
         )}
 
+        {successMessage && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg animate-pulse">
+            <p className="text-green-800 font-medium text-lg">{successMessage}</p>
+          </div>
+        )}
+
         {activePassengerRide ? (
           <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             Live passenger location sharing is active for your current ride so the driver can see you on the map.
@@ -147,24 +195,33 @@ export default function MyBookings() {
             <h2 className="text-2xl font-bold text-gray-800 mb-2">No Bookings Yet</h2>
             <p className="text-gray-600">You haven't made any ride requests yet. Start by searching for a ride!</p>
           </div>
+        ) : !Array.isArray(bookings) ? (
+          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
+            <p className="text-red-600 font-semibold">Error: Invalid bookings data format</p>
+          </div>
         ) : (
           <div className="space-y-4">
-            {bookings.map((booking) => (
+            {bookings.map((booking) => {
+              if (!booking || !booking._id) {
+                console.warn("⚠️ Invalid booking object:", booking);
+                return null;
+              }
+              return (
               <div key={booking._id} className="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="p-6 space-y-4">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="text-lg font-bold text-gray-800">From: {booking.pickupLocation}</h3>
+                        <h3 className="text-lg font-bold text-gray-800">From: {booking.pickupLocation || "Unknown"}</h3>
                         <span className="text-gray-400">→</span>
-                        <h3 className="text-lg font-bold text-gray-800">To: {booking.dropLocation}</h3>
+                        <h3 className="text-lg font-bold text-gray-800">To: {booking.dropLocation || "Unknown"}</h3>
                       </div>
                       <p className="text-sm text-gray-600 mt-1">
-                        📅 {new Date(booking.createdAt).toLocaleDateString()} at{" "}
-                        {new Date(booking.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        📅 {booking.createdAt ? new Date(booking.createdAt).toLocaleDateString() : "N/A"} at{" "}
+                        {booking.createdAt ? new Date(booking.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "N/A"}
                       </p>
                     </div>
-                    <span className={`px-4 py-2 rounded-full text-sm font-semibold capitalize ${getStatusColor(booking.status)}`}>{booking.status}</span>
+                    <span className={`px-4 py-2 rounded-full text-sm font-semibold capitalize ${getStatusColor(booking.status || "pending")}`}>{booking.status || "pending"}</span>
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-4 py-4 border-y border-gray-200">
@@ -173,7 +230,7 @@ export default function MyBookings() {
                       <p className="font-semibold text-gray-800 capitalize">{booking.vehicleType || "Any"}</p>
                       <p className="text-xs text-gray-600 mt-2">Distance: {Number(booking.distanceKm || 0).toFixed(2)} km</p>
                       <p className="text-xs text-gray-600">Time: {Math.round(Number(booking.timeMin || 0))} min</p>
-                      <p className="text-xs text-gray-700 font-semibold">Fare: Rs. {Number(booking.finalFare ?? booking.estimatedFare ?? booking.estimatedPrice ?? 0).toFixed(2)}</p>
+                      <p className="text-xs text-gray-700 font-semibold">Fare: Rs. {getDisplayFare(booking).toFixed(2)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 uppercase">Seats</p>
@@ -189,7 +246,7 @@ export default function MyBookings() {
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 uppercase">Request ID</p>
-                      <p className="font-semibold text-gray-800 text-xs">{booking._id.slice(-6).toUpperCase()}</p>
+                      <p className="font-semibold text-gray-800 text-xs">{booking._id ? booking._id.slice(-6).toUpperCase() : "N/A"}</p>
                     </div>
                   </div>
 
@@ -200,6 +257,55 @@ export default function MyBookings() {
                     </div>
                   )}
 
+                  {booking.acceptedBy ? (
+                    <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                      <h4 className="text-sm font-semibold text-blue-900 mb-3">✓ Accepted Driver Details</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-xs text-blue-600 uppercase font-medium">Driver Name</p>
+                          <p className="font-semibold text-gray-800">{booking.acceptedBy?.name || "N/A"}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-blue-600 uppercase font-medium">Phone</p>
+                          <p className="font-semibold text-gray-800">{booking.acceptedBy?.phone || booking.acceptedBy?.email || "N/A"}</p>
+                        </div>
+                        {booking.acceptedVehicle && (
+                          <>
+                            <div>
+                              <p className="text-xs text-blue-600 uppercase font-medium">Vehicle Type</p>
+                              <p className="font-semibold text-gray-800 capitalize">{booking.acceptedVehicle?.type || "N/A"}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-blue-600 uppercase font-medium">Plate Number</p>
+                              <p className="font-semibold text-gray-800">{booking.acceptedVehicle?.plateNumber || "N/A"}</p>
+                            </div>
+                            {booking.acceptedVehicle?.model && (
+                              <div className="col-span-2">
+                                <p className="text-xs text-blue-600 uppercase font-medium">Model</p>
+                                <p className="font-semibold text-gray-800">{booking.acceptedVehicle.model}</p>
+                              </div>
+                            )}
+                          </>
+                        )}
+                        {booking.acceptedAt && (
+                          <div className="col-span-2">
+                            <p className="text-xs text-blue-600 uppercase font-medium">Accepted At</p>
+                            <p className="font-semibold text-gray-800">
+                              {new Date(booking.acceptedAt).toLocaleDateString()} at{" "}
+                              {new Date(booking.acceptedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : booking.status === "pending" ? (
+                    <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                      <p className="text-sm text-yellow-800">
+                        <span className="font-semibold">⏳ Waiting for a driver</span> to accept your booking
+                      </p>
+                    </div>
+                  ) : null}
+
                   <div className="flex gap-3">
                     {booking.status !== "completed" && booking.status !== "cancelled" && (
                       <>
@@ -207,8 +313,20 @@ export default function MyBookings() {
                         <button onClick={() => handleCancel(booking._id)} className="flex-1 bg-red-100 text-red-700 font-semibold py-2 rounded-lg hover:bg-red-200 transition">Cancel Request</button>
                       </>
                     )}
+                    {booking.status === "accepted" && (
+                      <button onClick={() => navigate(`/rides/track/${booking._id}`)} className="flex-1 bg-purple-600 text-white font-semibold py-2 rounded-lg hover:bg-purple-700 transition">
+                        🗺️ Track Ride
+                      </button>
+                    )}
+                    {booking.status === "started" && (
+                      <button onClick={() => navigate(`/rides/track/${booking._id}`)} className="flex-1 bg-purple-600 text-white font-semibold py-2 rounded-lg hover:bg-purple-700 transition">
+                        🗺️ Track Ride
+                      </button>
+                    )}
                     {booking.status === "completed" && (
-                      <button onClick={() => handleRateDriver(booking._id)} className="flex-1 bg-green-600 text-white font-semibold py-2 rounded-lg hover:bg-green-700 transition">⭐ Rate Driver</button>
+                      <button onClick={() => handlePayment(booking)} className="flex-1 bg-green-600 text-white font-semibold py-2 rounded-lg hover:bg-green-700 transition">
+                        💳 Payment
+                      </button>
                     )}
                     {booking.status === "cancelled" && (
                       <button className="flex-1 bg-gray-300 text-gray-600 font-semibold py-2 rounded-lg cursor-not-allowed">Request Cancelled</button>
@@ -216,7 +334,8 @@ export default function MyBookings() {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

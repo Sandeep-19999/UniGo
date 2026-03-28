@@ -6,7 +6,8 @@ import {
   getMyRideRequests,
   getRideRequestById,
   cancelRideRequest,
-  updatePassengerRideLocation
+  updatePassengerRideLocation,
+  getRideTracking
 } from "../../controllers/rides/passengerRideController.js";
 import {
   createBooking,
@@ -29,6 +30,7 @@ router.get("/rides", protect, authorizeRoles("user"), getMyRideRequests);
 router.get("/rides/:id", protect, authorizeRoles("user"), getRideRequestById);
 router.put("/rides/:id/cancel", protect, authorizeRoles("user"), cancelRideRequest);
 router.patch("/rides/:id/location", protect, authorizeRoles("user"), updatePassengerRideLocation);
+router.get("/rides/:id/tracking", protect, authorizeRoles("user"), getRideTracking);
 
 router.post("/bookings", protect, authorizeRoles("user"), createBooking);
 router.get("/bookings", protect, authorizeRoles("user"), getPassengerBookings);

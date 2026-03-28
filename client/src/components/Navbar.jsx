@@ -41,7 +41,6 @@ export default function Navbar() {
             <>
               <NavItem to="/home">Home</NavItem>
               <NavItem to="/rides/request">Search Rides</NavItem>
-              <NavItem to="/rides/browse">Browse Drivers</NavItem>
               <NavItem to="/rides/my-bookings">My Bookings</NavItem>
               <NavItem to="/payments">Payments</NavItem>
               <NavItem to="/safety">Safety</NavItem>
