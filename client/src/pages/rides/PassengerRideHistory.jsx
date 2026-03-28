@@ -165,7 +165,7 @@ export default function PassengerRideHistory() {
                             {ride.status}
                           </span>
                           <Link
-                            to={`/rides/rate/${ride._id}`}
+                            to={`/rides/details/${ride._id}`}
                             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-900 transition hover:border-slate-400 hover:bg-slate-50"
                           >
                             View Details

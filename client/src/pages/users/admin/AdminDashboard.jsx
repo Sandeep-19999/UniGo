@@ -105,6 +105,7 @@ export default function AdminDashboard() {
   const [passengers, setPassengers] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [activeTab, setActiveTab] = useState("overview");
+  const [successMessage, setSuccessMessage] = useState("");
 
   // =========================================================
   // STATE: LOADING FLAGS
@@ -219,6 +220,8 @@ export default function AdminDashboard() {
     }
   }, [activeTab]);
 
+
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-7xl space-y-8 p-6">
@@ -309,6 +312,12 @@ export default function AdminDashboard() {
         {errors.stats && (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {errors.stats}
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-700 animate-pulse">
+            {successMessage}
           </div>
         )}
 
@@ -426,6 +435,8 @@ export default function AdminDashboard() {
             error={errors.drivers}
           />
         )}
+
+
 
         {/* =====================================================
             TAB CONTENT: PAYMENTS

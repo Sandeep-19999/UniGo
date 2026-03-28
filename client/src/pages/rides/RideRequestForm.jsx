@@ -357,9 +357,9 @@ export default function RideRequestForm() {
       setEstimatedFare(0);
       setErrors({});
 
-      // Redirect to browse drivers after 1.5 seconds
+      // Redirect to my bookings after 1.5 seconds
       setTimeout(() => {
-        navigate("/rides/browse");
+        navigate("/rides/my-bookings");
       }, 1500);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to create ride request");

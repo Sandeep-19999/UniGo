@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { api } from "../../api/axios";
 import { formatCurrency } from "../../utils/paymentHelpers";
 
-export default function FareCalculator() {
+export default function FareCalculator({ bookingData = {} }) {
   const [formData, setFormData] = useState({
     distance: "",
     duration: "",
@@ -11,6 +11,18 @@ export default function FareCalculator() {
 
   const [fareBreakdown, setFareBreakdown] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Prefill form with booking data if available
+  useEffect(() => {
+    if (bookingData?.bookingDetails) {
+      const { distanceKm, timeMin } = bookingData.bookingDetails;
+      setFormData((prev) => ({
+        ...prev,
+        distance: distanceKm ? String(distanceKm) : prev.distance,
+        duration: timeMin ? String(timeMin) : prev.duration,
+      }));
+    }
+  }, [bookingData]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
