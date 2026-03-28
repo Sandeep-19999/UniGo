@@ -19,11 +19,6 @@ export default function DriverDocumentUpload() {
   const [primaryVehicle, setPrimaryVehicle] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
-  const [form, setForm] = useState({
-    documentNumber: '',
-    expiryDate: '',
-    notes: ''
-  });
 
   useEffect(() => {
     let active = true;
@@ -44,11 +39,6 @@ export default function DriverDocumentUpload() {
         setExistingDocument(found);
         setPrimaryVehicle(data?.primaryVehicle || null);
         setPreviewUrl(found?.fileUrl || '');
-        setForm({
-          documentNumber: found?.documentNumber || '',
-          expiryDate: found?.expiryDate ? String(found.expiryDate).slice(0, 10) : '',
-          notes: found?.notes || ''
-        });
       } catch (err) {
         if (active) setError(err?.response?.data?.message || 'Failed to load document form.');
       } finally {
@@ -60,11 +50,6 @@ export default function DriverDocumentUpload() {
       active = false;
     };
   }, [documentType, meta]);
-
-  function handleChange(event) {
-    const { name, value } = event.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  }
 
   function handleFileChange(event) {
     const file = event.target.files?.[0] || null;
@@ -96,9 +81,6 @@ export default function DriverDocumentUpload() {
         fileUrl: upload?.fileUrl || existingDocument?.fileUrl,
         fileName: upload?.fileName || existingDocument?.fileName || '',
         mimeType: upload?.mimeType || existingDocument?.mimeType || '',
-        documentNumber: form.documentNumber,
-        expiryDate: form.expiryDate || undefined,
-        notes: form.notes,
         vehicleId: primaryVehicle?._id || undefined
       });
 
@@ -197,22 +179,6 @@ export default function DriverDocumentUpload() {
                 )}
               </div>
             ) : null}
-
-            <div className="grid gap-5 sm:grid-cols-2">
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-700">Document number</span>
-                <input name="documentNumber" value={form.documentNumber} onChange={handleChange} className="driver-input" placeholder="Optional if not applicable" />
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-700">Expiry date</span>
-                <input name="expiryDate" type="date" value={form.expiryDate} onChange={handleChange} className="driver-input" />
-              </label>
-            </div>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-slate-700">Notes</span>
-              <textarea name="notes" value={form.notes} onChange={handleChange} className="driver-input min-h-[120px]" placeholder="Optional notes for reviewers" />
-            </label>
 
             <div className="flex flex-wrap gap-3">
               <button type="submit" disabled={saving} className="driver-btn-primary min-w-[180px]">

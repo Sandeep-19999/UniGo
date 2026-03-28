@@ -3,6 +3,48 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getDriverNextRoute } from '../../utils/driverOnboarding';
 
+// Validation Functions
+const CAMPUS_EMAIL_REGEX = /^[a-zA-Z]+\d+@my\.sliit\.lk$/;
+const STRONG_PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+const VALID_ROLES = ['driver', 'user', 'admin'];
+
+function validateName(name) {
+  const trimmed = name.trim();
+  if (!trimmed) return 'Name is required.';
+  if (trimmed.length < 3) return 'Name must be at least 3 characters.';
+  return '';
+}
+
+function validateRole(role) {
+  if (!VALID_ROLES.includes(role)) return 'Please select a valid role.';
+  return '';
+}
+
+function validateEmail(email) {
+  const trimmed = email.trim();
+  if (!trimmed) return 'Email is required.';
+  if (!CAMPUS_EMAIL_REGEX.test(trimmed)) {
+    return 'Please enter a valid SLIIT campus email (e.g., IT23822222@my.sliit.lk)';
+  }
+  return '';
+}
+
+function validatePassword(password) {
+  if (!password) return 'Password is required.';
+  if (password.length < 8) return 'Password must be at least 8 characters.';
+  if (!STRONG_PASSWORD_REGEX.test(password)) {
+    return 'Password must include uppercase, lowercase, number, and special character (@$!%*?&).';
+  }
+  return '';
+}
+
+function validateAdminInviteCode(code, role) {
+  if (role === 'admin' && !code.trim()) {
+    return 'Admin invite code is required.';
+  }
+  return '';
+}
+
 export default function Register() {
   const { register } = useAuth();
   const nav = useNavigate();
@@ -15,13 +57,84 @@ export default function Register() {
 
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [nameError, setNameError] = useState('');
+  const [roleError, setRoleError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [adminInviteCodeError, setAdminInviteCodeError] = useState('');
+
+  function handleNameChange(e) {
+    const value = e.target.value;
+    setName(value);
+    if (value.trim()) {
+      setNameError(validateName(value));
+    } else {
+      setNameError('');
+    }
+  }
+
+  function handleRoleChange(e) {
+    const value = e.target.value;
+    setRole(value);
+    setRoleError(validateRole(value));
+    // Clear admin code error when role changes
+    if (value !== 'admin') {
+      setAdminInviteCodeError('');
+    }
+  }
+
+  function handleEmailChange(e) {
+    const value = e.target.value;
+    setEmail(value);
+    if (value.trim()) {
+      setEmailError(validateEmail(value));
+    } else {
+      setEmailError('');
+    }
+  }
+
+  function handlePasswordChange(e) {
+    const value = e.target.value;
+    setPassword(value);
+    if (value) {
+      setPasswordError(validatePassword(value));
+    } else {
+      setPasswordError('');
+    }
+  }
+
+  function handleAdminInviteCodeChange(e) {
+    const value = e.target.value;
+    setAdminInviteCode(value);
+    if (role === 'admin') {
+      setAdminInviteCodeError(validateAdminInviteCode(value, role));
+    }
+  }
 
   async function onSubmit(e) {
     e.preventDefault();
     setErr('');
+
+    // Validate all fields before submit
+    const nameErr = validateName(name);
+    const roleErr = validateRole(role);
+    const emailErr = validateEmail(email);
+    const passwordErr = validatePassword(password);
+    const adminCodeErr = validateAdminInviteCode(adminInviteCode, role);
+
+    setNameError(nameErr);
+    setRoleError(roleErr);
+    setEmailError(emailErr);
+    setPasswordError(passwordErr);
+    setAdminInviteCodeError(adminCodeErr);
+
+    if (nameErr || roleErr || emailErr || passwordErr || adminCodeErr) {
+      return;
+    }
+
     setBusy(true);
     try {
-      const { user, onboarding } = await register(name, email, password, role, adminInviteCode);
+      const { user, onboarding } = await register(name.trim(), email.trim(), password, role, adminInviteCode);
       if (user.role === 'admin') nav('/admin/dashboard');
       else if (user.role === 'driver') nav(getDriverNextRoute(onboarding), { replace: true });
       else nav('/home');
@@ -51,13 +164,20 @@ export default function Register() {
               id="name"
               name="name"
               autoComplete="name"
-              className="mt-1 w-full rounded-xl border p-2 outline-none focus:ring-2 focus:ring-slate-900"
+              className={`mt-1 w-full rounded-xl border p-2 outline-none focus:ring-2 ${
+                nameError ? 'border-red-500 focus:ring-red-500' : 'focus:ring-slate-900'
+              }`}
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={handleNameChange}
+              onBlur={() => {
+                if (name.trim()) {
+                  setNameError(validateName(name));
+                }
+              }}
               type="text"
               placeholder="Your name"
-              required
             />
+            {nameError ? <p className="mt-1 text-xs text-red-600">{nameError}</p> : null}
           </label>
 
           <label className="block" htmlFor="role">
@@ -65,14 +185,17 @@ export default function Register() {
             <select
               id="role"
               name="role"
-              className="mt-1 w-full rounded-xl border p-2 outline-none focus:ring-2 focus:ring-slate-900"
+              className={`mt-1 w-full rounded-xl border p-2 outline-none focus:ring-2 ${
+                roleError ? 'border-red-500 focus:ring-red-500' : 'focus:ring-slate-900'
+              }`}
               value={role}
-              onChange={(e) => setRole(e.target.value)}
+              onChange={handleRoleChange}
             >
               <option value="driver">Driver</option>
               <option value="user">Passenger</option>
               <option value="admin">Admin (invite required)</option>
             </select>
+            {roleError ? <p className="mt-1 text-xs text-red-600">{roleError}</p> : null}
           </label>
 
           {role === 'admin' ? (
@@ -81,13 +204,20 @@ export default function Register() {
               <input
                 id="adminInviteCode"
                 name="adminInviteCode"
-                className="mt-1 w-full rounded-xl border p-2 outline-none focus:ring-2 focus:ring-slate-900"
+                className={`mt-1 w-full rounded-xl border p-2 outline-none focus:ring-2 ${
+                  adminInviteCodeError ? 'border-red-500 focus:ring-red-500' : 'focus:ring-slate-900'
+                }`}
                 value={adminInviteCode}
-                onChange={(e) => setAdminInviteCode(e.target.value)}
+                onChange={handleAdminInviteCodeChange}
+                onBlur={() => {
+                  if (role === 'admin') {
+                    setAdminInviteCodeError(validateAdminInviteCode(adminInviteCode, role));
+                  }
+                }}
                 type="text"
                 placeholder="From system owner"
-                required
               />
+              {adminInviteCodeError ? <p className="mt-1 text-xs text-red-600">{adminInviteCodeError}</p> : null}
             </label>
           ) : null}
 
@@ -97,13 +227,20 @@ export default function Register() {
               id="email"
               name="email"
               autoComplete="email"
-              className="mt-1 w-full rounded-xl border p-2 outline-none focus:ring-2 focus:ring-slate-900"
+              className={`mt-1 w-full rounded-xl border p-2 outline-none focus:ring-2 ${
+                emailError ? 'border-red-500 focus:ring-red-500' : 'focus:ring-slate-900'
+              }`}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={handleEmailChange}
+              onBlur={() => {
+                if (email.trim()) {
+                  setEmailError(validateEmail(email));
+                }
+              }}
               type="email"
               placeholder="you@uni.edu"
-              required
             />
+            {emailError ? <p className="mt-1 text-xs text-red-600">{emailError}</p> : null}
           </label>
 
           <label className="block" htmlFor="password">
@@ -112,17 +249,26 @@ export default function Register() {
               id="password"
               name="password"
               autoComplete="new-password"
-              className="mt-1 w-full rounded-xl border p-2 outline-none focus:ring-2 focus:ring-slate-900"
+              className={`mt-1 w-full rounded-xl border p-2 outline-none focus:ring-2 ${
+                passwordError ? 'border-red-500 focus:ring-red-500' : 'focus:ring-slate-900'
+              }`}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={handlePasswordChange}
+              onBlur={() => {
+                if (password) {
+                  setPasswordError(validatePassword(password));
+                }
+              }}
               type="password"
               placeholder="Minimum 8 characters"
-              required
-              minLength={8}
             />
+            {passwordError ? <p className="mt-1 text-xs text-red-600">{passwordError}</p> : null}
           </label>
 
-          <button disabled={busy} className="w-full rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60">
+          <button 
+            disabled={busy || nameError || roleError || emailError || passwordError || (role === 'admin' && adminInviteCodeError)}
+            className="w-full rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+          >
             {busy ? 'Creating...' : 'Create account'}
           </button>
         </form>

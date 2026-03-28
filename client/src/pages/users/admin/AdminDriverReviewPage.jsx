@@ -787,7 +787,7 @@ export default function AdminDriverReviewPage() {
                             License Plate
                           </p>
                           <p className="mt-1 text-sm font-medium text-slate-900">
-                            {detail.onboarding.primaryVehicle.licensePlate ||
+                            {detail.onboarding.primaryVehicle.plateNumber ||
                               "—"}
                           </p>
                         </div>
