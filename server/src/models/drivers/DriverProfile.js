@@ -39,6 +39,18 @@ const driverProfileSchema = new mongoose.Schema(
     driverCurrentDestinationUpdatedAt: {
       type: Date,
       default: null
+    },
+    bankAccount: {
+      accountHolderName: { type: String, trim: true, default: "" },
+      accountNumber: { type: String, trim: true, default: "" },
+      bankName: { type: String, trim: true, default: "" },
+      accountType: {
+        type: String,
+        enum: ["savings", "checking"],
+        default: "savings"
+      },
+      routingNumber: { type: String, trim: true, default: "" },
+      isVerified: { type: Boolean, default: false }
     }
   },
   { timestamps: true }

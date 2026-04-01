@@ -1,5 +1,6 @@
 import { DriverEarnings } from "../../models/Payment.js";
 import RideRequest from "../../models/rides/RideRequest.js";
+import DriverProfile from "../../models/drivers/DriverProfile.js";
 
 function emptySummary(driverId) {
   return {
@@ -114,8 +115,21 @@ export async function requestCashout(req, res, next) {
     const accountNumber = String(req.body?.accountNumber || "").trim();
     const note = String(req.body?.note || "").trim();
 
+    const driverProfile = await DriverProfile.findOne({ user: req.user._id }).select("bankAccount");
+
+    const profileBankAccount = driverProfile?.bankAccount || {};
+    const finalBankName = bankName || String(profileBankAccount.bankName || "").trim();
+    const finalAccountHolderName = accountHolderName || String(profileBankAccount.accountHolderName || "").trim();
+    const finalAccountNumber = accountNumber || String(profileBankAccount.accountNumber || "").trim();
+
     if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ message: "Enter a valid cashout amount." });
+    }
+
+    if (!finalBankName || !finalAccountHolderName || !finalAccountNumber) {
+      return res.status(400).json({
+        message: "Please complete bank account details before requesting a withdrawal."
+      });
     }
 
     // Calculate total earnings from completed rides
@@ -159,9 +173,9 @@ export async function requestCashout(req, res, next) {
     earnings.cashoutRequests.unshift({
       amount,
       method,
-      bankName,
-      accountHolderName,
-      accountNumber,
+      bankName: finalBankName,
+      accountHolderName: finalAccountHolderName,
+      accountNumber: finalAccountNumber,
       note,
       status: "pending",
       requestedAt: new Date()
@@ -172,6 +186,79 @@ export async function requestCashout(req, res, next) {
     res.status(201).json({
       message: "Cashout request submitted successfully.",
       earnings
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getDriverAccountDetails(req, res, next) {
+  try {
+    const driverProfile = await DriverProfile.findOne({ user: req.user._id }).select("firstName lastName phone bankAccount");
+
+    if (!driverProfile) {
+      return res.status(404).json({ message: "Driver profile not found." });
+    }
+
+    res.json({
+      accountDetails: {
+        fullName: `${driverProfile.firstName || ""} ${driverProfile.lastName || ""}`.trim(),
+        phone: driverProfile.phone || "",
+        bankAccount: {
+          accountHolderName: driverProfile.bankAccount?.accountHolderName || "",
+          accountNumber: driverProfile.bankAccount?.accountNumber || "",
+          bankName: driverProfile.bankAccount?.bankName || "",
+          accountType: driverProfile.bankAccount?.accountType || "savings",
+          routingNumber: driverProfile.bankAccount?.routingNumber || "",
+          isVerified: Boolean(driverProfile.bankAccount?.isVerified)
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateDriverAccountDetails(req, res, next) {
+  try {
+    const accountHolderName = String(req.body?.accountHolderName || "").trim();
+    const accountNumber = String(req.body?.accountNumber || "").trim();
+    const bankName = String(req.body?.bankName || "").trim();
+    const accountType = String(req.body?.accountType || "savings").trim();
+    const routingNumber = String(req.body?.routingNumber || "").trim();
+
+    if (!accountHolderName || !accountNumber || !bankName) {
+      return res.status(400).json({
+        message: "Account holder name, account number, and bank name are required."
+      });
+    }
+
+    const profile = await DriverProfile.findOneAndUpdate(
+      { user: req.user._id },
+      {
+        $set: {
+          "bankAccount.accountHolderName": accountHolderName,
+          "bankAccount.accountNumber": accountNumber,
+          "bankAccount.bankName": bankName,
+          "bankAccount.accountType": accountType === "checking" ? "checking" : "savings",
+          "bankAccount.routingNumber": routingNumber,
+          "bankAccount.isVerified": false
+        }
+      },
+      { new: true }
+    ).select("firstName lastName phone bankAccount");
+
+    if (!profile) {
+      return res.status(404).json({ message: "Driver profile not found." });
+    }
+
+    res.json({
+      message: "Bank account details saved.",
+      accountDetails: {
+        fullName: `${profile.firstName || ""} ${profile.lastName || ""}`.trim(),
+        phone: profile.phone || "",
+        bankAccount: profile.bankAccount
+      }
     });
   } catch (err) {
     next(err);

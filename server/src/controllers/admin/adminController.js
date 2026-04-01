@@ -1,5 +1,6 @@
 import Admin from "../../models/admin/Admin.js";
 import User from "../../models/users/User.js";
+import { DriverEarnings } from "../../models/Payment.js";
 
 // Create admin profile (after registration)
 export async function createAdminProfile(req, res, next) {
@@ -219,6 +220,102 @@ export async function getDashboardStats(req, res, next) {
         totalRevenue,
         activeBookings: totalBookings - completedBookings
       }
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getCashoutRequests(req, res, next) {
+  try {
+    const statusFilter = String(req.query?.status || "").trim();
+    const allowed = new Set(["pending", "approved", "paid", "rejected"]);
+    const hasStatusFilter = allowed.has(statusFilter);
+
+    const earningsDocs = await DriverEarnings.find({ "cashoutRequests.0": { $exists: true } })
+      .populate("driverId", "name email phone")
+      .sort({ updatedAt: -1 });
+
+    const items = [];
+
+    earningsDocs.forEach((doc) => {
+      (doc.cashoutRequests || []).forEach((request) => {
+        if (hasStatusFilter && request.status !== statusFilter) return;
+
+        items.push({
+          requestId: request._id,
+          driverId: doc.driverId?._id || doc.driverId,
+          driverName: doc.driverId?.name || "Unknown Driver",
+          driverEmail: doc.driverId?.email || "",
+          driverPhone: doc.driverId?.phone || "",
+          amount: Number(request.amount || 0),
+          method: request.method || "bank_transfer",
+          bankName: request.bankName || "",
+          accountHolderName: request.accountHolderName || "",
+          accountNumber: request.accountNumber || "",
+          note: request.note || "",
+          status: request.status,
+          adminNote: request.adminNote || "",
+          payoutReference: request.payoutReference || "",
+          requestedAt: request.requestedAt || null,
+          processedAt: request.processedAt || null
+        });
+      });
+    });
+
+    items.sort((a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
+
+    res.json({ items, total: items.length });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateCashoutRequestStatus(req, res, next) {
+  try {
+    const { requestId } = req.params;
+    const status = String(req.body?.status || "").trim();
+    const adminNote = String(req.body?.adminNote || "").trim();
+    const payoutReference = String(req.body?.payoutReference || "").trim();
+
+    if (!["approved", "paid", "rejected"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status. Use approved, paid, or rejected." });
+    }
+
+    const earnings = await DriverEarnings.findOne({ "cashoutRequests._id": requestId });
+    if (!earnings) {
+      return res.status(404).json({ message: "Cashout request not found." });
+    }
+
+    const request = earnings.cashoutRequests.id(requestId);
+    if (!request) {
+      return res.status(404).json({ message: "Cashout request not found." });
+    }
+
+    if (request.status === "paid") {
+      return res.status(400).json({ message: "Paid cashout requests cannot be changed." });
+    }
+
+    const previousStatus = request.status;
+
+    if (status === "rejected" && ["pending", "approved"].includes(previousStatus)) {
+      const amount = Number(request.amount || 0);
+      earnings.availableBalance = Number((Number(earnings.availableBalance || 0) + amount).toFixed(2));
+      earnings.totalWithdrawn = Number(Math.max(0, Number(earnings.totalWithdrawn || 0) - amount).toFixed(2));
+    }
+
+    request.status = status;
+    request.adminNote = adminNote;
+    request.payoutReference = payoutReference;
+    request.processedBy = req.user?._id || null;
+    request.processedAt = new Date();
+
+    earnings.lastUpdated = new Date();
+    await earnings.save();
+
+    res.json({
+      message: `Cashout request marked as ${status}.`,
+      request
     });
   } catch (err) {
     next(err);

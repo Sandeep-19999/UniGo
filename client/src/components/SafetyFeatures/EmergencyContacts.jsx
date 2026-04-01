@@ -2,11 +2,15 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/axios";
 
 export default function EmergencyContacts() {
+  const allowedRelationships = ["Parent", "Guardian", "Sibling", "Friend", "Other"];
+  const allowedNotificationPreferences = ["Both", "SMS", "Email"];
+
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState("");
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [form, setForm] = useState({
     name: "",
     phoneNumber: "",
@@ -14,20 +18,72 @@ export default function EmergencyContacts() {
     notificationPreference: "Both",
   });
 
+  function sanitizePhoneNumber(value) {
+    return String(value || "").replace(/[\s-]/g, "").trim();
+  }
+
+  function validateForm() {
+    const validationErrors = {};
+    const trimmedName = form.name.trim();
+    const sanitizedPhoneNumber = sanitizePhoneNumber(form.phoneNumber);
+
+    if (!trimmedName) {
+      validationErrors.name = "Name is required.";
+    } else if (!/^[A-Za-z][A-Za-z\s'.-]{1,59}$/.test(trimmedName)) {
+      validationErrors.name = "Name should be 2-60 characters and contain only letters/spaces.";
+    }
+
+    if (!sanitizedPhoneNumber) {
+      validationErrors.phoneNumber = "Phone number is required.";
+    } else if (!/^(?:0\d{9}|\+94\d{9})$/.test(sanitizedPhoneNumber)) {
+      validationErrors.phoneNumber = "Use 0701234567 or +94701234567 format.";
+    }
+
+    if (!allowedRelationships.includes(form.relationship)) {
+      validationErrors.relationship = "Please select a valid relationship.";
+    }
+
+    if (!allowedNotificationPreferences.includes(form.notificationPreference)) {
+      validationErrors.notificationPreference = "Please select a valid notification preference.";
+    }
+
+    const duplicateContact = contacts.find(
+      (contact) => sanitizePhoneNumber(contact.phoneNumber) === sanitizedPhoneNumber
+    );
+    if (duplicateContact) {
+      validationErrors.phoneNumber = "This phone number is already in your emergency contacts.";
+    }
+
+    return {
+      hasErrors: Object.keys(validationErrors).length > 0,
+      validationErrors,
+      payload: {
+        ...form,
+        name: trimmedName,
+        phoneNumber: sanitizedPhoneNumber,
+      },
+    };
+  }
+
+  function updateFormField(field, value) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+    if (fieldErrors[field]) {
+      setFieldErrors((prev) => {
+        const nextErrors = { ...prev };
+        delete nextErrors[field];
+        return nextErrors;
+      });
+    }
+  }
+
   useEffect(() => {
     loadContacts();
   }, []);
 
-  async function getUserId() {
-    const { data } = await api.get("/auth/me");
-    return data?.user?.id;
-  }
-
   async function loadContacts() {
     try {
       setError("");
-      const userId = await getUserId();
-      const { data } = await api.get(`/safety/emergency-contacts/${userId}`);
+      const { data } = await api.get("/safety/emergency-contacts");
       setContacts(data.emergencyContacts || []);
     } catch (e) {
       setError(e?.response?.data?.message || "Failed to load contacts");
@@ -38,10 +94,18 @@ export default function EmergencyContacts() {
 
   async function addContact(e) {
     e.preventDefault();
+    const { hasErrors, validationErrors, payload } = validateForm();
+    if (hasErrors) {
+      setFieldErrors(validationErrors);
+      setError("Please fix the highlighted fields.");
+      return;
+    }
+
     setSaving(true);
     setError("");
+    setFieldErrors({});
     try {
-      await api.post("/safety/emergency-contacts", form);
+      await api.post("/safety/emergency-contacts", payload);
       setForm({
         name: "",
         phoneNumber: "",
@@ -87,23 +151,27 @@ export default function EmergencyContacts() {
 
       <form onSubmit={addContact} className="mt-4 grid gap-3 md:grid-cols-2">
         <input
-          className="rounded-lg border border-slate-300 px-3 py-2"
+          className={`rounded-lg border px-3 py-2 ${fieldErrors.name ? "border-rose-500" : "border-slate-300"}`}
           placeholder="Name"
+          maxLength={60}
           value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          onChange={(e) => updateFormField("name", e.target.value)}
           required
         />
+        {fieldErrors.name ? <p className="-mt-2 text-xs text-rose-600 md:col-span-2">{fieldErrors.name}</p> : null}
         <input
-          className="rounded-lg border border-slate-300 px-3 py-2"
+          className={`rounded-lg border px-3 py-2 ${fieldErrors.phoneNumber ? "border-rose-500" : "border-slate-300"}`}
           placeholder="Phone Number (e.g. 0701234567 or +94701234567)"
+          maxLength={13}
           value={form.phoneNumber}
-          onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })}
+          onChange={(e) => updateFormField("phoneNumber", e.target.value)}
           required
         />
+        {fieldErrors.phoneNumber ? <p className="-mt-2 text-xs text-rose-600 md:col-span-2">{fieldErrors.phoneNumber}</p> : null}
         <select
-          className="rounded-lg border border-slate-300 px-3 py-2"
+          className={`rounded-lg border px-3 py-2 ${fieldErrors.relationship ? "border-rose-500" : "border-slate-300"}`}
           value={form.relationship}
-          onChange={(e) => setForm({ ...form, relationship: e.target.value })}
+          onChange={(e) => updateFormField("relationship", e.target.value)}
         >
           <option>Parent</option>
           <option>Guardian</option>
@@ -111,15 +179,19 @@ export default function EmergencyContacts() {
           <option>Friend</option>
           <option>Other</option>
         </select>
+        {fieldErrors.relationship ? <p className="-mt-2 text-xs text-rose-600 md:col-span-2">{fieldErrors.relationship}</p> : null}
         <select
-          className="rounded-lg border border-slate-300 px-3 py-2"
+          className={`rounded-lg border px-3 py-2 ${fieldErrors.notificationPreference ? "border-rose-500" : "border-slate-300"}`}
           value={form.notificationPreference}
-          onChange={(e) => setForm({ ...form, notificationPreference: e.target.value })}
+          onChange={(e) => updateFormField("notificationPreference", e.target.value)}
         >
           <option>Both</option>
           <option>SMS</option>
           <option>Email</option>
         </select>
+        {fieldErrors.notificationPreference ? (
+          <p className="-mt-2 text-xs text-rose-600 md:col-span-2">{fieldErrors.notificationPreference}</p>
+        ) : null}
         <button
           type="submit"
           disabled={saving}

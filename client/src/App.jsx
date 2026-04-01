@@ -28,6 +28,8 @@ import RideTrackingPage from './pages/rides/RideTrackingPage';
 import PassengerRideHistory from './pages/rides/PassengerRideHistory';
 import RideDetailsPage from './pages/rides/RideDetailsPage';
 import DriverCashout from './pages/driver/DriverCashout';
+import DriverWithdrawalPage from './pages/driver/DriverWithdrawalPage';
+import AdminCashoutRequests from './pages/users/admin/AdminCashoutRequests';
 
 import Unauthorized from './pages/common/Unauthorized';
 import NotFound from './pages/common/NotFound';
@@ -59,6 +61,15 @@ export default function App() {
           element={
             <ProtectedRoute roles={['admin']}>
               <AdminDriverReviewPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/cashouts"
+          element={
+            <ProtectedRoute roles={['admin']}>
+              <AdminCashoutRequests />
             </ProtectedRoute>
           }
         />
@@ -178,6 +189,15 @@ export default function App() {
           element={
             <ProtectedRoute roles={['driver']} requireApprovedDriverOnboarding>
               <DriverCashout />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/driver/withdrawal"
+          element={
+            <ProtectedRoute roles={['driver']} requireApprovedDriverOnboarding>
+              <DriverWithdrawalPage />
             </ProtectedRoute>
           }
         />

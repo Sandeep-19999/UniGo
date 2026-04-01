@@ -12,6 +12,9 @@ import onboardingRoutes from "./routes/driver/onboardingRoutes.js";
 import availabilityRoutes from "./routes/driver/availabilityRoutes.js";
 import driverRequestRoutes from "./routes/driver/requestRoutes.js";
 import driverEarningsRoutes from "./routes/driver/earningsRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
+import ratingRoutes from "./routes/ratingRoutes.js";
+import safetyRoutes from "./routes/safetyRoutes.js";
 import testRoutes from "./routes/test/testRoutes.js";
 
 import { notFound, errorHandler } from "./middleware/errorMiddleware.js";
@@ -55,6 +58,9 @@ export function createApp() {
   app.use("/api/admin", adminRoutes);
   app.use("/api/admin/driver-reviews", driverReviewRoutes);
   app.use("/api/passenger", passengerRoutes);
+  app.use("/api/payment", paymentRoutes);
+  app.use("/api/rating", ratingRoutes);
+  app.use("/api/safety", safetyRoutes);
   app.use("/api/test", testRoutes);
 
   app.use("/api/driver/onboarding", onboardingRoutes);
