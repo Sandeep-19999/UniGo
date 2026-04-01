@@ -172,7 +172,6 @@ const safetySchema = new mongoose.Schema(
 );
 
 // Create indexes for better query performance
-safetySchema.index({ userId: 1 });
 safetySchema.index({ 'sosAlertHistory.createdAt': -1 });
 safetySchema.index({ 'locationHistory.timestamp': -1 });
 

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import DriverLayout from "../../components/driver/DriverLayout";
 import { api } from "../../api/axios";
 import { fmtMoney, fmtDateTime } from "../../utils/format";
 
 export default function DriverCashout() {
+  const navigate = useNavigate();
   const [earnings, setEarnings] = useState(null);
   const [history, setHistory] = useState({ rideEarnings: [], cashoutRequests: [] });
   const [error, setError] = useState("");
@@ -35,6 +37,22 @@ export default function DriverCashout() {
 
   const lastRideRows = useMemo(() => history.rideEarnings || [], [history.rideEarnings]);
   const lastCashouts = useMemo(() => history.cashoutRequests || [], [history.cashoutRequests]);
+
+  function handleWithdraw() {
+    const amount = Number(withdrawnInput || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError("Enter a valid withdrawal amount.");
+      return;
+    }
+
+    if (amount > availableBalance) {
+      setError(`Withdrawal amount exceeds available balance (${fmtMoney(availableBalance)}).`);
+      return;
+    }
+
+    setError("");
+    navigate("/driver/withdrawal", { state: { withdrawalAmount: amount } });
+  }
 
   return (
     <DriverLayout
@@ -121,7 +139,7 @@ export default function DriverCashout() {
                 />
               </div>
             </div>
-            <button type="button" className="driver-btn-primary w-full justify-center" disabled>
+            <button type="button" className="driver-btn-primary w-full justify-center" onClick={handleWithdraw}>
               Withdrawn
             </button>
           </div>

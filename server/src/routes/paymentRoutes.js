@@ -1,6 +1,6 @@
 import express from "express";
 import * as paymentController from "../controllers/paymentController.js";
-import { authMiddleware } from "../middleware/authMiddleware.js";
+import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -9,7 +9,7 @@ router.post("/gateway/webhook/stripe", paymentController.stripeWebhook);
 router.post("/gateway/webhook/razorpay", paymentController.razorpayWebhook);
 
 // Middleware to verify user is authenticated (applied to all routes below)
-router.use(authMiddleware);
+router.use(protect);
 
 // ========== PAYMENT PROCESSING ROUTES ==========
 router.post("/process", paymentController.processPayment);

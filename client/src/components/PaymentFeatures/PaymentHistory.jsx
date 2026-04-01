@@ -2,7 +2,51 @@ import React, { useState, useEffect } from "react";
 import { api } from "../../api/axios";
 import { formatCurrency } from "../../utils/paymentHelpers";
 
-export default function PaymentHistory() {
+function rideAmount(ride) {
+  if (Number(ride?.finalFare) > 0) return Number(ride.finalFare);
+  if (Number(ride?.estimatedFare) > 0) return Number(ride.estimatedFare);
+  if (Number(ride?.estimatedPrice) > 0) return Number(ride.estimatedPrice);
+
+  const distanceKm = Number(ride?.distanceKm || 0);
+  if (distanceKm > 0) {
+    const ratePerKm = ride?.vehicleType === "bike" ? 40 : 60;
+    return Number((distanceKm * ratePerKm).toFixed(2));
+  }
+
+  return 0;
+}
+
+function mapRideToPaymentLike(ride) {
+  const statusMap = {
+    completed: "Completed",
+    cancelled: "Cancelled",
+    pending: "Pending",
+    accepted: "Pending",
+    started: "Pending"
+  };
+
+  return {
+    _id: `ride-${ride._id}`,
+    transactionId: `RIDE-${String(ride._id || "").slice(-6).toUpperCase()}`,
+    paymentStatus: statusMap[ride.status] || "Pending",
+    amount: rideAmount(ride),
+    currency: "LKR",
+    paymentMethod: ride.paymentMethod || "cash",
+    createdAt: ride.createdAt,
+    rideDetails: {
+      pickupLocation: ride.pickupLocation,
+      dropoffLocation: ride.dropLocation,
+      distance: ride.distanceKm || 0
+    },
+    fareBreakdown: {
+      baseFare: rideAmount(ride),
+      distanceFare: 0,
+      tax: 0
+    }
+  };
+}
+
+export default function PaymentHistory({ rides = [] }) {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedPayment, setSelectedPayment] = useState(null);
@@ -17,8 +61,25 @@ export default function PaymentHistory() {
       const userId = meData?.user?.id;
       if (!userId) throw new Error("User not found");
 
-      const { data } = await api.get(`/payment/history/${userId}`);
-      setPayments(data.payments || []);
+      try {
+        const { data } = await api.get(`/payment/history/${userId}`);
+        const apiPayments = Array.isArray(data.payments) ? data.payments : [];
+
+        if (apiPayments.length > 0) {
+          setPayments(apiPayments);
+          return;
+        }
+      } catch {
+        // Fallback to ride history below
+      }
+
+      const fallbackRides = Array.isArray(rides) ? rides : [];
+      const mapped = fallbackRides
+        .filter((ride) => ["completed", "cancelled", "pending", "accepted", "started"].includes(ride.status))
+        .map(mapRideToPaymentLike)
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+      setPayments(mapped);
     } catch (error) {
       console.error("Error fetching payment history:", error);
     } finally {

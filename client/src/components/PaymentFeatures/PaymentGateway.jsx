@@ -2,15 +2,25 @@ import React, { useState, useEffect } from "react";
 import { api } from "../../api/axios";
 import { DEFAULT_CURRENCY, formatCurrency } from "../../utils/paymentHelpers";
 
-function randomObjectId() {
-  return (
-    Math.random().toString(16).slice(2, 10) +
-    Math.random().toString(16).slice(2, 10) +
-    Math.random().toString(16).slice(2, 10)
-  );
-}
+export default function PaymentGateway({ bookingData = {}, currentRide = null, currentRideAmount = 0 }) {
+  const cardMethods = ["Credit Card", "Debit Card"];
+  const allowedMethods = ["Credit Card", "Debit Card", "UPI", "Wallet", "Net Banking"];
 
-export default function PaymentGateway({ bookingData = {} }) {
+  const normalizeIncomingMethod = (method) => {
+    const raw = String(method || "").trim().toLowerCase();
+    if (raw === "credit card" || raw === "credit_card") return "Credit Card";
+    if (raw === "debit card" || raw === "debit_card") return "Debit Card";
+    if (raw === "upi") return "UPI";
+    if (raw === "wallet") return "Wallet";
+    if (raw === "net banking" || raw === "net_banking") return "Net Banking";
+
+    // Ride flow may provide legacy values like cash/online.
+    if (raw === "online") return "Credit Card";
+    if (raw === "cash" || raw === "cash on delivery") return "Credit Card";
+
+    return "Credit Card";
+  };
+
   const [formData, setFormData] = useState({
     amount: "",
     paymentMethod: "Credit Card",
@@ -22,25 +32,131 @@ export default function PaymentGateway({ bookingData = {} }) {
 
   const [loading, setLoading] = useState(false);
   const [paymentResult, setPaymentResult] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  const getObjectIdIfValid = (value) => {
+    const normalized = typeof value === "string" ? value.trim() : "";
+    return /^[a-fA-F0-9]{24}$/.test(normalized) ? normalized : "";
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    const normalizedAmount = Number(formData.amount);
+
+    if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+      errors.amount = "Enter a valid amount greater than 0.";
+    }
+
+    if (!allowedMethods.includes(formData.paymentMethod)) {
+      errors.paymentMethod = "Select a valid payment method.";
+    }
+
+    if (cardMethods.includes(formData.paymentMethod)) {
+      const holderName = formData.holderName.trim();
+      const cardDigits = formData.cardNumber.replace(/\D/g, "");
+      const cvvDigits = formData.cvv.replace(/\D/g, "");
+      const expiry = formData.expiryDate.trim();
+
+      if (!/^[A-Za-z][A-Za-z\s'.-]{1,59}$/.test(holderName)) {
+        errors.holderName = "Cardholder name should be 2-60 letters/spaces.";
+      }
+
+      if (!/^\d{13,19}$/.test(cardDigits)) {
+        errors.cardNumber = "Card number must contain 13-19 digits.";
+      }
+
+      if (!/^(0[1-9]|1[0-2])\/(\d{2})$/.test(expiry)) {
+        errors.expiryDate = "Use MM/YY format.";
+      } else {
+        const [monthStr, yearStr] = expiry.split("/");
+        const month = Number(monthStr);
+        const year = 2000 + Number(yearStr);
+        const now = new Date();
+        const currentMonth = now.getMonth() + 1;
+        const currentYear = now.getFullYear();
+        if (year < currentYear || (year === currentYear && month < currentMonth)) {
+          errors.expiryDate = "Card expiry date is in the past.";
+        }
+      }
+
+      if (!/^\d{3,4}$/.test(cvvDigits)) {
+        errors.cvv = "CVV must be 3 or 4 digits.";
+      }
+    }
+
+    const rideId = getObjectIdIfValid(currentRide?._id || bookingData?.bookingId || bookingData?.bookingDetails?._id || "");
+    const driverId = getObjectIdIfValid(
+      currentRide?.acceptedBy?._id ||
+      currentRide?.acceptedBy ||
+      bookingData?.bookingDetails?.acceptedBy?._id ||
+      bookingData?.bookingDetails?.acceptedBy ||
+      localStorage.getItem("driverId") ||
+      ""
+    );
+
+    if (!rideId || !driverId) {
+      errors.context = "Active ride or assigned driver not found. Please start/accept a ride before paying.";
+    }
+
+    return {
+      hasErrors: Object.keys(errors).length > 0,
+      errors,
+      payload: {
+        amount: normalizedAmount,
+        rideId,
+        driverId,
+        holderName: formData.holderName.trim(),
+      },
+    };
+  };
 
   // Prefill form with booking data if available
   useEffect(() => {
-    if (bookingData?.estimatedFare || bookingData?.paymentMethod) {
+    const defaultAmount = Number(bookingData?.estimatedFare || 0) > 0
+      ? Number(bookingData.estimatedFare)
+      : Number(currentRideAmount || 0);
+
+    if (defaultAmount > 0 || bookingData?.paymentMethod) {
       setFormData((prev) => ({
         ...prev,
-        amount: bookingData.estimatedFare ? String(bookingData.estimatedFare) : prev.amount,
-        paymentMethod: bookingData.paymentMethod === "cash" ? "Cash on Delivery" : (bookingData.paymentMethod || "Credit Card"),
+        amount: defaultAmount > 0 ? String(defaultAmount) : prev.amount,
+        paymentMethod: normalizeIncomingMethod(bookingData.paymentMethod),
       }));
     }
-  }, [bookingData]);
+  }, [bookingData, currentRideAmount]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    if (fieldErrors[name] || fieldErrors.context) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        if (name === "paymentMethod") {
+          delete next.cardNumber;
+          delete next.expiryDate;
+          delete next.cvv;
+          delete next.holderName;
+        }
+        return next;
+      });
+    }
     setFormData({ ...formData, [name]: value });
   };
 
   const handlePayment = async (e) => {
     e.preventDefault();
+    const { hasErrors, errors, payload } = validateForm();
+    if (hasErrors) {
+      setFieldErrors(errors);
+      setPaymentResult({
+        success: false,
+        message: errors.context || "Please fix the highlighted payment fields.",
+      });
+      return;
+    }
+
+    setFieldErrors({});
+    setPaymentResult(null);
     setLoading(true);
 
     try {
@@ -49,15 +165,22 @@ export default function PaymentGateway({ bookingData = {} }) {
 
       const { data } = await api.post("/payment/process", {
         userId,
-        amount: parseFloat(formData.amount),
+        amount: payload.amount,
         currency: DEFAULT_CURRENCY,
         paymentMethod: formData.paymentMethod,
-        bookingId: bookingData?.bookingId || undefined,
-        rideId: localStorage.getItem("rideId") || randomObjectId(),
-        driverId: localStorage.getItem("driverId") || randomObjectId(),
+        bookingId: bookingData?.bookingId || currentRide?._id || undefined,
+        rideId: payload.rideId,
+        driverId: payload.driverId,
         fareBreakdown: {
-          baseFare: parseFloat(formData.amount) || 0,
+          baseFare: payload.amount || 0,
           tax: 0,
+        },
+        rideDetails: {
+          pickupLocation: currentRide?.pickupLocation || bookingData?.pickupLocation || "",
+          dropoffLocation: currentRide?.dropLocation || bookingData?.dropLocation || "",
+          distance: Number(currentRide?.distanceKm || bookingData?.bookingDetails?.distanceKm || 0),
+          duration: Number(currentRide?.timeMin || bookingData?.bookingDetails?.timeMin || 0),
+          seats: Number(currentRide?.numberOfSeats || bookingData?.bookingDetails?.numberOfSeats || 1),
         },
       });
 
@@ -78,7 +201,7 @@ export default function PaymentGateway({ bookingData = {} }) {
       console.error("Error processing payment:", error);
       setPaymentResult({
         success: false,
-        message: error?.response?.data?.message || "Payment failed. Please try again.",
+        message: error?.response?.data?.message || error?.response?.data?.error || "Payment failed. Please try again.",
       });
     } finally {
       setLoading(false);
@@ -112,9 +235,12 @@ export default function PaymentGateway({ bookingData = {} }) {
             required
             step="0.01"
             min="0"
-            className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 ${
+                  fieldErrors.amount ? "border-rose-500 focus:ring-rose-400" : "border-gray-300 focus:ring-purple-500"
+                }`}
             placeholder="1000.00"
           />
+              {fieldErrors.amount ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.amount}</p> : null}
         </div>
 
         <div>
@@ -123,7 +249,9 @@ export default function PaymentGateway({ bookingData = {} }) {
             name="paymentMethod"
             value={formData.paymentMethod}
             onChange={handleInputChange}
-            className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 ${
+                  fieldErrors.paymentMethod ? "border-rose-500 focus:ring-rose-400" : "border-gray-300 focus:ring-purple-500"
+                }`}
           >
             <option value="Credit Card">Credit Card</option>
             <option value="Debit Card">Debit Card</option>
@@ -131,6 +259,7 @@ export default function PaymentGateway({ bookingData = {} }) {
             <option value="Wallet">Wallet</option>
             <option value="Net Banking">Net Banking</option>
           </select>
+              {fieldErrors.paymentMethod ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.paymentMethod}</p> : null}
         </div>
 
         {(formData.paymentMethod === "Credit Card" || formData.paymentMethod === "Debit Card") && (
@@ -143,9 +272,12 @@ export default function PaymentGateway({ bookingData = {} }) {
                 value={formData.holderName}
                 onChange={handleInputChange}
                 required
-                className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 ${
+                  fieldErrors.holderName ? "border-rose-500 focus:ring-rose-400" : "border-gray-300 focus:ring-purple-500"
+                }`}
                 placeholder="Full Name"
               />
+              {fieldErrors.holderName ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.holderName}</p> : null}
             </div>
 
             <div>
@@ -157,8 +289,11 @@ export default function PaymentGateway({ bookingData = {} }) {
                 onChange={handleInputChange}
                 required
                 placeholder="1234 5678 9012 3456"
-                className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 ${
+                  fieldErrors.cardNumber ? "border-rose-500 focus:ring-rose-400" : "border-gray-300 focus:ring-purple-500"
+                }`}
               />
+              {fieldErrors.cardNumber ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.cardNumber}</p> : null}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -171,8 +306,11 @@ export default function PaymentGateway({ bookingData = {} }) {
                   onChange={handleInputChange}
                   required
                   placeholder="MM/YY"
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 ${
+                    fieldErrors.expiryDate ? "border-rose-500 focus:ring-rose-400" : "border-gray-300 focus:ring-purple-500"
+                  }`}
                 />
+                {fieldErrors.expiryDate ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.expiryDate}</p> : null}
               </div>
               <div>
                 <label className="mb-2 block text-sm font-semibold text-gray-700">CVV *</label>
@@ -184,12 +322,17 @@ export default function PaymentGateway({ bookingData = {} }) {
                   required
                   placeholder="123"
                   maxLength="4"
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 ${
+                    fieldErrors.cvv ? "border-rose-500 focus:ring-rose-400" : "border-gray-300 focus:ring-purple-500"
+                  }`}
                 />
+                {fieldErrors.cvv ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.cvv}</p> : null}
               </div>
             </div>
           </>
         )}
+
+        {fieldErrors.context ? <p className="text-sm text-rose-600">{fieldErrors.context}</p> : null}
 
         <button
           type="submit"

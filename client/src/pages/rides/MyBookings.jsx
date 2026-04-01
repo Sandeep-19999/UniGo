@@ -8,6 +8,10 @@ export default function MyBookings() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [paidRideMap, setPaidRideMap] = useState({});
+  const [ratingsMap, setRatingsMap] = useState({});
+  const [ratingDrafts, setRatingDrafts] = useState({});
+  const [ratingSavingId, setRatingSavingId] = useState("");
   const watchIdRef = useRef(null);
 
   // Add error boundary
@@ -78,6 +82,81 @@ export default function MyBookings() {
     };
   }, [activePassengerRide?._id]);
 
+  useEffect(() => {
+    let active = true;
+
+    const loadPaymentAndRatingState = async () => {
+      const completedBookings = bookings.filter((booking) => booking?.status === "completed" && booking?._id);
+
+      if (completedBookings.length === 0) {
+        if (active) {
+          setPaidRideMap({});
+          setRatingsMap({});
+        }
+        return;
+      }
+
+      try {
+        const { data: meData } = await api.get("/auth/me");
+        const userId = meData?.user?.id;
+        if (!userId) return;
+
+        const { data: paymentData } = await api.get(`/payment/history/${userId}`);
+        const payments = Array.isArray(paymentData?.payments) ? paymentData.payments : [];
+
+        const nextPaidRideMap = {};
+        for (const payment of payments) {
+          const rideId = String(payment?.rideId || "").trim();
+          if (!rideId) continue;
+          if (payment?.paymentStatus === "Completed") {
+            nextPaidRideMap[rideId] = true;
+          }
+        }
+
+        if (!active) return;
+        setPaidRideMap(nextPaidRideMap);
+
+        const paidCompletedBookingIds = completedBookings
+          .map((booking) => booking._id)
+          .filter((bookingId) => nextPaidRideMap[bookingId]);
+
+        if (paidCompletedBookingIds.length === 0) {
+          if (active) setRatingsMap({});
+          return;
+        }
+
+        const ratingResults = await Promise.all(
+          paidCompletedBookingIds.map(async (bookingId) => {
+            try {
+              const { data } = await api.get(`/rating/booking/${bookingId}`);
+              return { bookingId, rating: data?.exists ? data.rating : null };
+            } catch {
+              return { bookingId, rating: null };
+            }
+          })
+        );
+
+        if (!active) return;
+        const nextRatingsMap = {};
+        for (const item of ratingResults) {
+          if (item.rating) nextRatingsMap[item.bookingId] = item.rating;
+        }
+        setRatingsMap(nextRatingsMap);
+      } catch {
+        if (active) {
+          setPaidRideMap({});
+          setRatingsMap({});
+        }
+      }
+    };
+
+    loadPaymentAndRatingState();
+
+    return () => {
+      active = false;
+    };
+  }, [bookings]);
+
   const handleCancel = async (bookingId) => {
     if (window.confirm("Are you sure you want to cancel this booking?")) {
       try {
@@ -100,6 +179,53 @@ export default function MyBookings() {
         bookingDetails: booking
       }
     });
+  };
+
+  const handleRatingDraftChange = (bookingId, patch) => {
+    setRatingDrafts((prev) => ({
+      ...prev,
+      [bookingId]: {
+        rating: prev[bookingId]?.rating || 0,
+        comment: prev[bookingId]?.comment || "",
+        ...patch,
+      },
+    }));
+  };
+
+  const handleSubmitRating = async (booking) => {
+    const bookingId = booking?._id;
+    if (!bookingId) return;
+
+    const draft = ratingDrafts[bookingId] || { rating: 0, comment: "" };
+    const rating = Number(draft.rating || 0);
+    const comment = String(draft.comment || "").trim();
+
+    if (rating < 1 || rating > 5) {
+      setError("Please select a star rating between 1 and 5.");
+      return;
+    }
+    if (comment.length < 3) {
+      setError("Please add a short review (at least 3 characters).");
+      return;
+    }
+
+    setError("");
+    setRatingSavingId(bookingId);
+    try {
+      const { data } = await api.post("/rating", {
+        bookingId,
+        rating,
+        comment,
+      });
+
+      setRatingsMap((prev) => ({ ...prev, [bookingId]: data?.rating }));
+      setSuccessMessage("Thanks! Your ride rating has been submitted.");
+      setTimeout(() => setSuccessMessage(""), 3000);
+    } catch (err) {
+      setError(err?.response?.data?.message || "Failed to submit rating.");
+    } finally {
+      setRatingSavingId("");
+    }
   };
 
   const getStatusColor = (status) => {
@@ -206,6 +332,10 @@ export default function MyBookings() {
                 console.warn("⚠️ Invalid booking object:", booking);
                 return null;
               }
+              const isPaid = Boolean(paidRideMap[booking._id]);
+              const existingRating = ratingsMap[booking._id] || null;
+              const draftRating = ratingDrafts[booking._id]?.rating || 0;
+              const draftComment = ratingDrafts[booking._id]?.comment || "";
               return (
               <div key={booking._id} className="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="p-6 space-y-4">
@@ -306,6 +436,57 @@ export default function MyBookings() {
                     </div>
                   ) : null}
 
+                  {booking.status === "completed" && (
+                    <div className={`rounded-lg border p-4 ${isPaid ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+                      <p className={`text-sm font-semibold ${isPaid ? "text-emerald-800" : "text-amber-800"}`}>
+                        {isPaid ? "Payment completed" : "Payment pending"}
+                      </p>
+
+                      {!isPaid ? (
+                        <p className="mt-1 text-sm text-amber-700">Complete payment to mark this ride fully completed and unlock star rating.</p>
+                      ) : existingRating ? (
+                        <div className="mt-3">
+                          <p className="text-sm font-semibold text-emerald-900">Your rating</p>
+                          <p className="mt-1 text-lg text-amber-500">{"★".repeat(Number(existingRating.rating || 0))}{"☆".repeat(5 - Number(existingRating.rating || 0))}</p>
+                          <p className="mt-1 text-sm text-emerald-800">{existingRating.comment}</p>
+                        </div>
+                      ) : (
+                        <div className="mt-3 space-y-3">
+                          <p className="text-sm font-semibold text-emerald-900">Rate this ride</p>
+                          <div className="flex items-center gap-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                type="button"
+                                onClick={() => handleRatingDraftChange(booking._id, { rating: star })}
+                                className={`text-2xl ${star <= draftRating ? "text-amber-500" : "text-slate-300"}`}
+                                aria-label={`Rate ${star} stars`}
+                              >
+                                ★
+                              </button>
+                            ))}
+                          </div>
+                          <textarea
+                            value={draftComment}
+                            onChange={(e) => handleRatingDraftChange(booking._id, { comment: e.target.value })}
+                            className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-800"
+                            rows={2}
+                            maxLength={300}
+                            placeholder="Write a short review about your ride"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSubmitRating(booking)}
+                            disabled={ratingSavingId === booking._id}
+                            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                          >
+                            {ratingSavingId === booking._id ? "Submitting..." : "Submit Rating"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="flex gap-3">
                     {booking.status !== "completed" && booking.status !== "cancelled" && (
                       <>
@@ -324,9 +505,15 @@ export default function MyBookings() {
                       </button>
                     )}
                     {booking.status === "completed" && (
-                      <button onClick={() => handlePayment(booking)} className="flex-1 bg-green-600 text-white font-semibold py-2 rounded-lg hover:bg-green-700 transition">
-                        💳 Payment
-                      </button>
+                      isPaid ? (
+                        <button className="flex-1 bg-emerald-600 text-white font-semibold py-2 rounded-lg cursor-default">
+                          ✅ Completed
+                        </button>
+                      ) : (
+                        <button onClick={() => handlePayment(booking)} className="flex-1 bg-green-600 text-white font-semibold py-2 rounded-lg hover:bg-green-700 transition">
+                          💳 Payment
+                        </button>
+                      )
                     )}
                     {booking.status === "cancelled" && (
                       <button className="flex-1 bg-gray-300 text-gray-600 font-semibold py-2 rounded-lg cursor-not-allowed">Request Cancelled</button>

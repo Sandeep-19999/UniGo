@@ -3,7 +3,6 @@ import mongoose from 'mongoose';
 const invoiceSchema = new mongoose.Schema({
   invoiceNumber: {
     type: String,
-    unique: true,
     required: true,
   },
   itemDescription: String,
@@ -21,7 +20,6 @@ const invoiceSchema = new mongoose.Schema({
 const refundSchema = new mongoose.Schema({
   refundId: {
     type: String,
-    unique: true,
     required: true,
   },
   transactionId: {
@@ -162,6 +160,9 @@ const cashoutRequestSchema = new mongoose.Schema(
       enum: ['pending', 'approved', 'paid', 'rejected'],
       default: 'pending'
     },
+    adminNote: { type: String, trim: true, default: '' },
+    payoutReference: { type: String, trim: true, default: '' },
+    processedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     requestedAt: { type: Date, default: Date.now },
     processedAt: { type: Date, default: null }
   },
@@ -224,7 +225,6 @@ paymentSchema.index({ rideId: 1 });
 paymentSchema.index({ driverId: 1 });
 paymentSchema.index({ paymentStatus: 1 });
 paymentSchema.index({ createdAt: -1 });
-paymentSchema.index({ transactionId: 1 });
 driverEarningsSchema.index({ driverId: 1, lastUpdated: -1 });
 
 const Payment = mongoose.model('Payment', paymentSchema);

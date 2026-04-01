@@ -1,6 +1,60 @@
 import Safety from '../models/Safety.js';
 import { sendNotification } from '../utils/safetyHelpers.js';
 
+const allowedRelationships = new Set(['Parent', 'Guardian', 'Sibling', 'Friend', 'Other']);
+const allowedNotificationPreferences = new Set(['SMS', 'Email', 'Both']);
+
+function sanitizePhoneNumber(value) {
+  return String(value || '').replace(/[\s-]/g, '').trim();
+}
+
+function normalizeEmergencyContactInput(data = {}) {
+  return {
+    name: typeof data.name === 'string' ? data.name.trim() : '',
+    phoneNumber: sanitizePhoneNumber(data.phoneNumber),
+    email: typeof data.email === 'string' ? data.email.trim() : '',
+    relationship: data.relationship,
+    notificationPreference: data.notificationPreference,
+  };
+}
+
+function validateEmergencyContactInput(data, options = {}) {
+  const { partial = false } = options;
+
+  if (!partial || data.name !== undefined) {
+    if (!data.name) {
+      return 'Name is required';
+    }
+    if (!/^[A-Za-z][A-Za-z\s'.-]{1,59}$/.test(data.name)) {
+      return 'Name should be 2-60 characters and contain only letters/spaces';
+    }
+  }
+
+  if (!partial || data.phoneNumber !== undefined) {
+    if (!data.phoneNumber) {
+      return 'Phone number is required';
+    }
+    if (!/^(?:0\d{9}|\+94\d{9})$/.test(data.phoneNumber)) {
+      return 'Phone number must be in 0701234567 or +94701234567 format';
+    }
+  }
+
+  if (!partial || data.relationship !== undefined) {
+    if (!allowedRelationships.has(data.relationship)) {
+      return 'Invalid relationship value';
+    }
+  }
+
+  if (!partial || data.notificationPreference !== undefined) {
+    const preference = data.notificationPreference || 'Both';
+    if (!allowedNotificationPreferences.has(preference)) {
+      return 'Invalid notification preference';
+    }
+  }
+
+  return null;
+}
+
 // ========== SOS ALERT FUNCTIONS ==========
 
 /**
@@ -125,11 +179,11 @@ export const getSosAlertStatus = async (req, res) => {
 
 /**
  * Get SOS Alert History
- * GET /api/safety/sos-history/:userId
+ * GET /api/safety/sos-history
  */
 export const getSosAlertHistory = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user.id;
 
     const safety = await Safety.findOne({ userId }).select('sosAlertHistory');
     if (!safety) {
@@ -235,11 +289,11 @@ export const updateLocation = async (req, res) => {
 
 /**
  * Get Current Location
- * GET /api/safety/location/current/:userId
+ * GET /api/safety/location/current
  */
 export const getCurrentLocation = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user.id;
 
     const safety = await Safety.findOne({ userId }).select('currentLocation');
     if (!safety || !safety.currentLocation) {
@@ -258,11 +312,11 @@ export const getCurrentLocation = async (req, res) => {
 
 /**
  * Get Location History
- * GET /api/safety/location/history/:userId
+ * GET /api/safety/location/history
  */
 export const getLocationHistory = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user.id;
     const { limit = 50 } = req.query;
 
     const safety = await Safety.findOne({ userId }).select('locationHistory');
@@ -354,7 +408,7 @@ export const disableLocationSharing = async (req, res) => {
  */
 export const getEmergencyContacts = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user.id;
 
     const safety = await Safety.findOne({ userId }).select('emergencyContacts');
     if (!safety) {
@@ -377,11 +431,12 @@ export const getEmergencyContacts = async (req, res) => {
  */
 export const addEmergencyContact = async (req, res) => {
   try {
-    const { name, phoneNumber, email, relationship, notificationPreference } = req.body;
+    const input = normalizeEmergencyContactInput(req.body);
     const userId = req.user.id;
 
-    if (!name || !phoneNumber || !relationship) {
-      return res.status(400).json({ message: 'Missing required fields' });
+    const validationError = validateEmergencyContactInput(input);
+    if (validationError) {
+      return res.status(400).json({ message: validationError });
     }
 
     let safety = await Safety.findOne({ userId });
@@ -389,12 +444,19 @@ export const addEmergencyContact = async (req, res) => {
       safety = new Safety({ userId });
     }
 
+    const duplicateContact = safety.emergencyContacts.find(
+      (contact) => sanitizePhoneNumber(contact.phoneNumber) === input.phoneNumber
+    );
+    if (duplicateContact) {
+      return res.status(409).json({ message: 'This phone number already exists in emergency contacts' });
+    }
+
     const newContact = {
-      name,
-      phoneNumber,
-      email: email || '',
-      relationship,
-      notificationPreference: notificationPreference || 'Both',
+      name: input.name,
+      phoneNumber: input.phoneNumber,
+      email: input.email || '',
+      relationship: input.relationship,
+      notificationPreference: input.notificationPreference || 'Both',
       isNotified: false,
     };
 
@@ -419,7 +481,7 @@ export const addEmergencyContact = async (req, res) => {
 export const updateEmergencyContact = async (req, res) => {
   try {
     const { contactId } = req.params;
-    const { name, phoneNumber, email, relationship, notificationPreference } = req.body;
+    const input = normalizeEmergencyContactInput(req.body);
     const userId = req.user.id;
 
     const safety = await Safety.findOne({ userId });
@@ -432,11 +494,36 @@ export const updateEmergencyContact = async (req, res) => {
       return res.status(404).json({ message: 'Contact not found' });
     }
 
-    contact.name = name || contact.name;
-    contact.phoneNumber = phoneNumber || contact.phoneNumber;
-    contact.email = email || contact.email;
-    contact.relationship = relationship || contact.relationship;
-    contact.notificationPreference = notificationPreference || contact.notificationPreference;
+    const updates = {};
+    if (req.body.name !== undefined) updates.name = input.name;
+    if (req.body.phoneNumber !== undefined) updates.phoneNumber = input.phoneNumber;
+    if (req.body.email !== undefined) updates.email = input.email;
+    if (req.body.relationship !== undefined) updates.relationship = input.relationship;
+    if (req.body.notificationPreference !== undefined) {
+      updates.notificationPreference = input.notificationPreference;
+    }
+
+    const validationError = validateEmergencyContactInput(updates, { partial: true });
+    if (validationError) {
+      return res.status(400).json({ message: validationError });
+    }
+
+    if (updates.phoneNumber) {
+      const duplicateContact = safety.emergencyContacts.find(
+        (existingContact) =>
+          String(existingContact._id) !== String(contactId) &&
+          sanitizePhoneNumber(existingContact.phoneNumber) === updates.phoneNumber
+      );
+      if (duplicateContact) {
+        return res.status(409).json({ message: 'This phone number already exists in emergency contacts' });
+      }
+    }
+
+    contact.name = updates.name ?? contact.name;
+    contact.phoneNumber = updates.phoneNumber ?? contact.phoneNumber;
+    contact.email = updates.email ?? contact.email;
+    contact.relationship = updates.relationship ?? contact.relationship;
+    contact.notificationPreference = updates.notificationPreference ?? contact.notificationPreference;
 
     await safety.save();
 
@@ -524,7 +611,7 @@ export const sendTestNotification = async (req, res) => {
  */
 export const getSafetyScore = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user.id;
 
     const safety = await Safety.findOne({ userId }).select('safetyScore');
     if (!safety) {
@@ -543,11 +630,11 @@ export const getSafetyScore = async (req, res) => {
 
 /**
  * Update Safety Score
- * PUT /api/safety/score/:userId
+ * PUT /api/safety/score
  */
 export const updateSafetyScore = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user.id;
     const { newScore } = req.body;
 
     if (newScore < 0 || newScore > 100) {
@@ -581,7 +668,7 @@ export const updateSafetyScore = async (req, res) => {
  */
 export const getTravelHistory = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user.id;
 
     const safety = await Safety.findOne({ userId }).select('travelHistory');
     if (!safety) {
@@ -684,7 +771,7 @@ export const reportIncident = async (req, res) => {
  */
 export const getIncidentReports = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user.id;
 
     const safety = await Safety.findOne({ userId }).select('incidentReports');
     if (!safety) {
@@ -734,7 +821,7 @@ export const getIncidentReportDetails = async (req, res) => {
  */
 export const getSafetySettings = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user.id;
 
     const safety = await Safety.findOne({ userId });
     if (!safety) {
@@ -759,11 +846,11 @@ export const getSafetySettings = async (req, res) => {
 
 /**
  * Update Safety Settings
- * PUT /api/safety/settings/:userId
+ * PUT /api/safety/settings
  */
 export const updateSafetySettings = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user.id;
     const { sosButtonEnabled } = req.body;
 
     const safety = await Safety.findOne({ userId });

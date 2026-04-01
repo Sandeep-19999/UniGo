@@ -10,7 +10,9 @@ import {
   getAdminByUserId,
   getAllPassengers,
   getAllDrivers,
-  getDashboardStats
+  getDashboardStats,
+  getCashoutRequests,
+  updateCashoutRequestStatus
 } from "../../controllers/admin/adminController.js";
 
 const router = Router();
@@ -34,5 +36,7 @@ router.post("/profiles/login-track", protect, authorizeRoles("admin"), updateLas
 router.get("/passengers", protect, authorizeRoles("admin"), getAllPassengers);
 router.get("/drivers", protect, authorizeRoles("admin"), getAllDrivers);
 router.get("/stats", protect, authorizeRoles("admin"), getDashboardStats);
+router.get("/cashouts", protect, authorizeRoles("admin"), getCashoutRequests);
+router.patch("/cashouts/:requestId", protect, authorizeRoles("admin"), updateCashoutRequestStatus);
 
 export default router;

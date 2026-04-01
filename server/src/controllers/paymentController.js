@@ -1,6 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import { Payment, DriverEarnings } from '../models/Payment.js';
 
+const allowedPaymentMethods = new Set(['Credit Card', 'Debit Card', 'UPI', 'Wallet', 'Net Banking']);
+const objectIdPattern = /^[a-fA-F0-9]{24}$/;
+
 // ========== PAYMENT PROCESSING FUNCTIONS ==========
 
 /**
@@ -12,8 +15,42 @@ export const processPayment = async (req, res) => {
     const { rideId, driverId, amount, currency, paymentMethod, fareBreakdown, rideDetails } = req.body;
     const userId = req.user.id;
 
-    if (!rideId || !driverId || !amount || !paymentMethod) {
-      return res.status(400).json({ message: 'Missing required fields' });
+    const normalizedAmount = Number(amount);
+    const normalizedRideId = String(rideId || '').trim();
+    const normalizedDriverId = String(driverId || '').trim();
+
+    if (!objectIdPattern.test(normalizedRideId)) {
+      return res.status(400).json({ message: 'Invalid or missing rideId' });
+    }
+
+    if (!objectIdPattern.test(normalizedDriverId)) {
+      return res.status(400).json({ message: 'Invalid or missing driverId' });
+    }
+
+    if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+      return res.status(400).json({ message: 'Amount must be a number greater than 0' });
+    }
+
+    if (!allowedPaymentMethods.has(paymentMethod)) {
+      return res.status(400).json({ message: 'Invalid payment method' });
+    }
+
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized user' });
+    }
+
+    const existingPaidPayment = await Payment.findOne({
+      userId,
+      rideId: normalizedRideId,
+      paymentStatus: 'Completed'
+    });
+    if (existingPaidPayment) {
+      return res.status(200).json({
+        success: true,
+        message: 'Payment already completed for this ride',
+        transactionId: existingPaidPayment.transactionId,
+        payment: existingPaidPayment,
+      });
     }
 
     const transactionId = `TXN-${uuidv4()}`;
@@ -21,30 +58,37 @@ export const processPayment = async (req, res) => {
     const payment = new Payment({
       transactionId,
       userId,
-      rideId,
-      driverId,
-      amount,
+      rideId: normalizedRideId,
+      driverId: normalizedDriverId,
+      amount: normalizedAmount,
       currency: currency || 'LKR',
       paymentMethod,
-      paymentStatus: 'Pending',
+      paymentStatus: 'Completed',
       fareBreakdown: fareBreakdown || {},
       rideDetails: rideDetails || {},
       paymentGateway: {
         gateway: 'Stripe', // Default, can be changed
       },
+      paymentProcessedAt: new Date(),
     });
 
     await payment.save();
 
     res.status(201).json({
       success: true,
-      message: 'Payment initiated',
+      message: 'Payment completed',
       transactionId,
       payment,
     });
   } catch (error) {
     console.error('Error processing payment:', error);
-    res.status(500).json({ message: 'Error processing payment', error: error.message });
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        message: 'Duplicate payment record detected. Please refresh and try again.',
+        error: error.message,
+      });
+    }
+    res.status(500).json({ message: error.message || 'Error processing payment', error: error.message });
   }
 };
 
