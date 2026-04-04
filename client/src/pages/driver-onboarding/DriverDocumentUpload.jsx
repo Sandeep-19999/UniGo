@@ -4,7 +4,7 @@ import { api } from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import OnboardingShell from '../../components/driver/OnboardingShell';
 import { documentMetaFromRouteParam, getDriverNextRoute } from '../../utils/driverOnboarding';
-import { prepareDocumentPayload } from '../../utils/fileUpload';
+import { validateDocumentFile } from '../../utils/fileUpload';
 
 export default function DriverDocumentUpload() {
   const { documentType } = useParams();
@@ -48,21 +48,37 @@ export default function DriverDocumentUpload() {
 
     return () => {
       active = false;
+      if (previewUrl && previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrl);
+      }
     };
   }, [documentType, meta]);
 
   function handleFileChange(event) {
     const file = event.target.files?.[0] || null;
-    setSelectedFile(file);
     setError('');
 
     if (!file) {
+      setSelectedFile(null);
       setPreviewUrl(existingDocument?.fileUrl || '');
       return;
     }
 
-    const objectUrl = URL.createObjectURL(file);
-    setPreviewUrl(objectUrl);
+    try {
+      validateDocumentFile(file);
+      setSelectedFile(file);
+
+      if (previewUrl && previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrl);
+      }
+
+      setPreviewUrl(URL.createObjectURL(file));
+    } catch (err) {
+      event.target.value = '';
+      setSelectedFile(null);
+      setPreviewUrl(existingDocument?.fileUrl || '');
+      setError(err.message || 'Invalid file.');
+    }
   }
 
   async function handleSubmit(event) {
@@ -71,17 +87,20 @@ export default function DriverDocumentUpload() {
     setError('');
 
     try {
-      const upload = selectedFile ? await prepareDocumentPayload(selectedFile) : null;
-
-      if (!upload && !existingDocument?.fileUrl) {
+      if (!selectedFile) {
         throw new Error('Please choose a file before submitting.');
       }
 
-      await api.put(`/driver/onboarding/documents/${documentType}`, {
-        fileUrl: upload?.fileUrl || existingDocument?.fileUrl,
-        fileName: upload?.fileName || existingDocument?.fileName || '',
-        mimeType: upload?.mimeType || existingDocument?.mimeType || '',
-        vehicleId: primaryVehicle?._id || undefined
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      if (primaryVehicle?._id) {
+        formData.append('vehicleId', primaryVehicle._id);
+      }
+
+      await api.put(`/driver/onboarding/documents/${documentType}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
       });
 
       const onboarding = await refreshDriverOnboarding();
@@ -114,13 +133,15 @@ export default function DriverDocumentUpload() {
     return <div className="mx-auto max-w-4xl p-6">Unsupported document type.</div>;
   }
 
+  const showImagePreview = selectedFile?.type?.startsWith('image/') || (!selectedFile && /^https?:\/\/.+$/i.test(String(previewUrl)) && !String(existingDocument?.mimeType || '').includes('pdf'));
+
   return (
     <OnboardingShell
       title={meta.helperTitle}
       description={meta.helperText}
       footer={
         <div className="text-sm text-slate-500">
-          Current API stores the file as an inline payload. Use clear images or small PDFs for smooth submission.
+          Files upload directly to secure cloud storage. JPG, PNG, WEBP, and PDF are supported up to 8MB.
         </div>
       }
     >
@@ -170,11 +191,16 @@ export default function DriverDocumentUpload() {
 
             {previewUrl ? (
               <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-slate-50 p-4">
-                {String(previewUrl).startsWith('data:image') || selectedFile?.type?.startsWith('image/') ? (
+                {showImagePreview ? (
                   <img src={previewUrl} alt={meta.title} className="mx-auto max-h-[420px] rounded-[24px] object-contain" />
                 ) : (
-                  <div className="rounded-[24px] border border-slate-200 bg-white p-6 text-sm text-slate-600">
-                    File selected: {selectedFile?.name || existingDocument?.fileName || meta.title}
+                  <div className="rounded-[24px] border border-slate-200 bg-white p-6 text-sm text-slate-600 space-y-3">
+                    <div>File selected: {selectedFile?.name || existingDocument?.fileName || meta.title}</div>
+                    {existingDocument?.fileUrl ? (
+                      <a href={existingDocument.fileUrl} target="_blank" rel="noreferrer" className="inline-flex rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                        Open current file
+                      </a>
+                    ) : null}
                   </div>
                 )}
               </div>

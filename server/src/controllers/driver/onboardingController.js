@@ -1,3 +1,6 @@
+import { Readable } from "stream";
+
+import cloudinary, { isCloudinaryConfigured } from "../../config/cloudinary.js";
 import Vehicle from "../../models/vehicles/Vehicle.js";
 import DriverDocument, { DRIVER_DOCUMENT_TYPES } from "../../models/drivers/DriverDocument.js";
 import DriverProfile from "../../models/drivers/DriverProfile.js";
@@ -6,6 +9,43 @@ import { buildDriverOnboardingSummary, ensureDriverProfile } from "../../service
 function validateNonEmpty(label, value) {
   if (!String(value || "").trim()) {
     throw new Error(`${label} is required.`);
+  }
+}
+
+function normalizeValue(value) {
+  return String(value || "").trim();
+}
+
+function uploadBufferToCloudinary(file, documentType, driverId) {
+  return new Promise((resolve, reject) => {
+    const upload = cloudinary.uploader.upload_stream(
+      {
+        folder: `unigo/driver-documents/${documentType}`,
+        resource_type: "auto",
+        public_id: `${driverId}-${Date.now()}`,
+        overwrite: true,
+        use_filename: false
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+
+    Readable.from(file.buffer).pipe(upload);
+  });
+}
+
+async function destroyCloudinaryAsset(document) {
+  if (!document?.cloudinaryPublicId) return;
+
+  try {
+    await cloudinary.uploader.destroy(document.cloudinaryPublicId, {
+      resource_type: document.resourceType || "image",
+      invalidate: true
+    });
+  } catch (error) {
+    console.error("Failed to delete Cloudinary asset:", error.message);
   }
 }
 
@@ -48,18 +88,18 @@ export async function upsertDriverProfile(req, res, next) {
       { user: req.user._id },
       {
         $set: {
-          firstName: String(firstName).trim(),
-          lastName: String(lastName).trim(),
-          phone: String(phone).trim(),
-          city: String(city).trim()
+          firstName: normalizeValue(firstName),
+          lastName: normalizeValue(lastName),
+          phone: normalizeValue(phone),
+          city: normalizeValue(city)
         }
       },
       { new: true }
     );
 
-    req.user.name = `${String(firstName).trim()} ${String(lastName).trim()}`.trim();
-    req.user.phone = String(phone).trim();
-    req.user.city = String(city).trim();
+    req.user.name = `${normalizeValue(firstName)} ${normalizeValue(lastName)}`.trim();
+    req.user.phone = normalizeValue(phone);
+    req.user.city = normalizeValue(city);
     await req.user.save();
 
     const onboarding = await buildDriverOnboardingSummary(req.user._id);
@@ -102,10 +142,10 @@ export async function submitVehicleInformation(req, res, next) {
     vehicle.type = type;
     vehicle.plateNumber = plateNumber;
     vehicle.seatCapacity = seats;
-    vehicle.make = String(make).trim();
-    vehicle.model = String(model).trim();
+    vehicle.make = normalizeValue(make);
+    vehicle.model = normalizeValue(model);
     vehicle.year = parsedYear;
-    vehicle.color = String(color || "").trim();
+    vehicle.color = normalizeValue(color);
     vehicle.isPrimary = Boolean(isPrimary ?? true);
     vehicle.reviewStatus = "approved";
     vehicle.approvedAt = new Date();
@@ -138,14 +178,20 @@ export async function listDriverDocuments(req, res, next) {
 
 export async function submitDriverDocument(req, res, next) {
   try {
+    if (!isCloudinaryConfigured()) {
+      return res.status(500).json({ message: "Cloudinary is not configured on the server." });
+    }
+
     const { documentType } = req.params;
-    const { fileUrl, fileName, mimeType, documentNumber, expiryDate, notes, vehicleId } = req.body;
+    const { documentNumber, expiryDate, notes, vehicleId } = req.body;
 
     if (!DRIVER_DOCUMENT_TYPES.includes(documentType)) {
       return res.status(400).json({ message: "Invalid document type." });
     }
 
-    validateNonEmpty("fileUrl", fileUrl);
+    if (!req.file) {
+      return res.status(400).json({ message: "Please choose a file before submitting." });
+    }
 
     let vehicle = null;
     if (vehicleId) {
@@ -155,16 +201,23 @@ export async function submitDriverDocument(req, res, next) {
       vehicle = await Vehicle.findOne({ driver: req.user._id }).sort({ isPrimary: -1, createdAt: -1 });
     }
 
+    const existingDocument = await DriverDocument.findOne({ driver: req.user._id, documentType });
+    const uploadResult = await uploadBufferToCloudinary(req.file, documentType, req.user._id);
+
     const payload = {
       driver: req.user._id,
       vehicle: vehicle?._id || null,
       documentType,
-      fileUrl: String(fileUrl).trim(),
-      fileName: String(fileName || "").trim(),
-      mimeType: String(mimeType || "").trim(),
-      documentNumber: String(documentNumber || "").trim(),
+      fileUrl: uploadResult.secure_url,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      fileSize: req.file.size,
+      cloudinaryPublicId: uploadResult.public_id,
+      cloudinaryAssetId: uploadResult.asset_id || "",
+      resourceType: uploadResult.resource_type || "image",
+      documentNumber: normalizeValue(documentNumber),
       expiryDate: expiryDate ? new Date(expiryDate) : null,
-      notes: String(notes || "").trim(),
+      notes: normalizeValue(notes),
       status: "submitted",
       submittedAt: new Date(),
       reviewedAt: null,
@@ -177,6 +230,10 @@ export async function submitDriverDocument(req, res, next) {
       { $set: payload },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
+
+    if (existingDocument?.cloudinaryPublicId) {
+      await destroyCloudinaryAsset(existingDocument);
+    }
 
     const onboarding = await buildDriverOnboardingSummary(req.user._id);
     res.json({ message: "Document submitted for review.", document, onboarding });
@@ -192,7 +249,12 @@ export async function deleteDriverDocument(req, res, next) {
       return res.status(400).json({ message: "Invalid document type." });
     }
 
-    await DriverDocument.findOneAndDelete({ driver: req.user._id, documentType });
+    const existingDocument = await DriverDocument.findOne({ driver: req.user._id, documentType });
+    if (existingDocument) {
+      await destroyCloudinaryAsset(existingDocument);
+      await existingDocument.deleteOne();
+    }
+
     const onboarding = await buildDriverOnboardingSummary(req.user._id);
     res.json({ message: "Document removed.", onboarding });
   } catch (err) {

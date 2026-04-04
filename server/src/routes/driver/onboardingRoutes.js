@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { protect, authorizeRoles } from "../../middleware/authMiddleware.js";
+import { driverDocumentUpload } from "../../middleware/uploadMiddleware.js";
 import {
   getOnboardingStatus,
   getDriverOnboardingDetail,
@@ -19,7 +20,7 @@ router.get("/detail", getDriverOnboardingDetail);
 router.put("/profile", upsertDriverProfile);
 router.put("/vehicle", submitVehicleInformation);
 router.get("/documents", listDriverDocuments);
-router.put("/documents/:documentType", submitDriverDocument);
+router.put("/documents/:documentType", driverDocumentUpload, submitDriverDocument);
 router.delete("/documents/:documentType", deleteDriverDocument);
 
 export default router;

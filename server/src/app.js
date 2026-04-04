@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
+import path from "path";
+import { fileURLToPath } from "url";
 
 import authRoutes from "./routes/auth/authRoutes.js";
 import adminRoutes from "./routes/admin/adminRoutes.js";
@@ -19,6 +21,10 @@ import testRoutes from "./routes/test/testRoutes.js";
 
 import { notFound, errorHandler } from "./middleware/errorMiddleware.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.resolve(__dirname, "../uploads");
+
 function parseOrigins() {
   const raw = process.env.CORS_ORIGIN || "";
   const list = raw.split(",").map((s) => s.trim()).filter(Boolean);
@@ -33,7 +39,7 @@ export function createApp() {
   const app = express();
   const allowed = new Set(parseOrigins());
 
-  app.use(express.json({ limit: "2mb" }));
+  app.use(express.json({ limit: "1mb" }));
 
   app.use(
     cors({
@@ -51,6 +57,7 @@ export function createApp() {
   app.options("*", cors());
 
   app.use(morgan("dev"));
+  app.use("/uploads", express.static(uploadsDir));
 
   app.get("/api/health", (req, res) => res.json({ ok: true }));
 
