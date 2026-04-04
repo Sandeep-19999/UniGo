@@ -182,9 +182,11 @@ export async function updateAvailabilityLocation(req, res, next) {
     }
 
     await availability.save();
-    await rematchPendingRideRequestsForDriver(req.user._id);
 
-    res.json({ message: "Driver live location updated.", availability });
+    res.json({
+      message: "Driver live location updated.",
+      availability
+    });
   } catch (err) {
     next(err);
   }
