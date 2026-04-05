@@ -85,7 +85,7 @@ function ManagementTable({ title, columns, data, loading, error, renderActions, 
               ) : (
                 <tr className="border-t">
                   <td
-                    colSpan={columns.length}
+                    colSpan={columns.length + (renderActions ? 1 : 0)}
                     className="px-6 py-8 text-center text-sm text-slate-500"
                   >
                     No data available
@@ -107,6 +107,17 @@ function ManagementTable({ title, columns, data, loading, error, renderActions, 
   );
 }
 
+function formatDateTime(value) {
+  if (!value) return "N/A";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "N/A";
+
+  const datePart = date.toLocaleDateString();
+  const timePart = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${datePart} ${timePart}`;
+}
+
 export default function AdminDashboard() {
   // =========================================================
   // STATE: DASHBOARD DATA
@@ -114,6 +125,9 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [passengers, setPassengers] = useState([]);
   const [drivers, setDrivers] = useState([]);
+  const [selectedPassenger, setSelectedPassenger] = useState(null);
+  const [selectedUserEmail, setSelectedUserEmail] = useState("");
+  const [selectedPassengerBookings, setSelectedPassengerBookings] = useState([]);
   const [activeTab, setActiveTab] = useState("overview");
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -126,7 +140,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState({
     stats: true,
     passengers: false,
-    drivers: false
+    drivers: false,
+    passengerBookings: false
   });
 
   // =========================================================
@@ -136,7 +151,8 @@ export default function AdminDashboard() {
   const [errors, setErrors] = useState({
     stats: "",
     passengers: "",
-    drivers: ""
+    drivers: "",
+    passengerBookings: ""
   });
 
   // =========================================================
@@ -178,7 +194,6 @@ export default function AdminDashboard() {
             id: p._id,
             Name: p.name,
             Email: p.email,
-            Phone: p.phone || "N/A",
             Location: p.city || "N/A",
             "Joined Date": new Date(p.createdAt).toLocaleDateString()
           }));
@@ -223,6 +238,39 @@ export default function AdminDashboard() {
       });
   }
 
+  function handleViewPassengerBookings(passenger) {
+    setSelectedPassenger(passenger);
+    setSelectedUserEmail(passenger?.Email || passenger?.email || "");
+    setSelectedPassengerBookings([]);
+    setLoading((prev) => ({ ...prev, passengerBookings: true }));
+    setErrors((prev) => ({ ...prev, passengerBookings: "" }));
+
+    api
+      .get(`/admin/users/${passenger.id}/bookings`)
+      .then((res) => {
+        setSelectedUserEmail((current) => current || res.data?.passenger?.email || "");
+
+        const bookingData = (res.data.bookings || []).map((booking) => ({
+          id: booking._id,
+          "Pickup Location": booking.pickup?.label || "N/A",
+          "Drop Location": booking.dropoff?.label || "N/A",
+          Status: booking.status || "N/A",
+          "Booked At": formatDateTime(booking.createdAt)
+        }));
+
+        setSelectedPassengerBookings(bookingData);
+      })
+      .catch((err) => {
+        setErrors((prev) => ({
+          ...prev,
+          passengerBookings: err?.response?.data?.message || "Failed to load passenger bookings"
+        }));
+      })
+      .finally(() => {
+        setLoading((prev) => ({ ...prev, passengerBookings: false }));
+      });
+  }
+
   // =========================================================
   // FETCH DRIVERS
   // Runs only when admin opens the drivers tab
@@ -239,7 +287,6 @@ export default function AdminDashboard() {
             Email: d.email,
             Phone: d.phone || "N/A",
             Location: d.location || "N/A",
-            Rating: d.rating || "N/A",
             "Joined Date": new Date(d.createdAt).toLocaleDateString()
           }));
 
@@ -464,28 +511,49 @@ export default function AdminDashboard() {
             Displays passengers table
         ===================================================== */}
         {activeTab === "passengers" && (
-          <ManagementTable
-            title="Passenger Management"
-            columns={["Name", "Email", "Phone", "Location", "Joined Date"]}
-            data={passengers}
-            loading={loading.passengers}
-            error={errors.passengers}
-            actionsLabel="Actions"
-            renderActions={(row) => {
-              const isDeleting = deletingPassengerIds.includes(row.id);
+          <div className="space-y-6">
+            <ManagementTable
+              title="Passenger Management"
+              columns={["Name", "Email", "Location", "Joined Date"]}
+              data={passengers}
+              loading={loading.passengers}
+              error={errors.passengers}
+              actionsLabel="Actions"
+              renderActions={(row) => {
+                const isDeleting = deletingPassengerIds.includes(row.id);
 
-              return (
-                <button
-                  type="button"
-                  onClick={() => handleDeletePassenger(row)}
-                  disabled={isDeleting}
-                  className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
-                >
-                  {isDeleting ? "Deleting..." : "Delete"}
-                </button>
-              );
-            }}
-          />
+                return (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleViewPassengerBookings(row)}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      View Bookings
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePassenger(row)}
+                      disabled={isDeleting}
+                      className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
+                    >
+                      {isDeleting ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                );
+              }}
+            />
+
+            {selectedPassenger && (
+              <ManagementTable
+                title={selectedUserEmail ? `Ride History - ${selectedUserEmail}` : "Ride History"}
+                columns={["Pickup Location", "Drop Location", "Status", "Booked At"]}
+                data={selectedPassengerBookings}
+                loading={loading.passengerBookings}
+                error={errors.passengerBookings}
+              />
+            )}
+          </div>
         )}
 
         {/* =====================================================
@@ -495,7 +563,7 @@ export default function AdminDashboard() {
         {activeTab === "drivers" && (
           <ManagementTable
             title="Driver Management"
-            columns={["Name", "Email", "Phone", "Location", "Rating", "Joined Date"]}
+            columns={["Name", "Email", "Phone", "Location", "Joined Date"]}
             data={drivers}
             loading={loading.drivers}
             error={errors.drivers}

@@ -1,5 +1,6 @@
 import Admin from "../../models/admin/Admin.js";
 import User from "../../models/users/User.js";
+import RideRequest from "../../models/rides/RideRequest.js";
 import { DriverEarnings } from "../../models/Payment.js";
 
 // Create admin profile (after registration)
@@ -194,6 +195,50 @@ export async function deletePassengerUser(req, res, next) {
     res.json({
       message: "Passenger deleted successfully",
       deletedUserId: id
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Get all bookings/ride history for a passenger by user ID
+export async function getPassengerBookingsByUserId(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const passenger = await User.findOne({ _id: id, role: "user" }).select("name email createdAt");
+    if (!passenger) {
+      return res.status(404).json({ message: "Passenger not found." });
+    }
+
+    const bookings = await RideRequest.find({ passenger: id })
+      .select("pickupLocation dropLocation status createdAt")
+      .sort({ createdAt: -1 });
+
+    const formattedBookings = bookings.map((booking) => {
+      const isCompleted = booking.status === "completed";
+
+      return {
+        _id: booking._id,
+        status: booking.status,
+        createdAt: booking.createdAt,
+        pickup: {
+          label: isCompleted ? booking.pickupLocation || "N/A" : "N/A"
+        },
+        dropoff: {
+          label: isCompleted ? booking.dropLocation || "N/A" : "N/A"
+        }
+      };
+    });
+
+    res.json({
+      passenger: {
+        _id: passenger._id,
+        name: passenger.name,
+        email: passenger.email
+      },
+      bookings: formattedBookings,
+      total: formattedBookings.length
     });
   } catch (err) {
     next(err);
