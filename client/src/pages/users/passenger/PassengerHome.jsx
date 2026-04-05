@@ -5,6 +5,17 @@ import { api } from "../../../api/axios";
 import { formatCurrency } from "../../../utils/paymentHelpers";
 import StatCard from "../../../components/StatCard";
 
+function rideAmount(ride) {
+  if (Number(ride?.finalFare) > 0) return Number(ride.finalFare);
+  if (Number(ride?.estimatedFare) > 0) return Number(ride.estimatedFare);
+  if (Number(ride?.estimatedPrice) > 0) return Number(ride.estimatedPrice);
+  return 0;
+}
+
+function formatRideDate(dateString) {
+  return new Date(dateString).toLocaleDateString();
+}
+
 export default function PassengerHome() {
   const { user } = useAuth();
   const [walletBalance, setWalletBalance] = useState(450);
@@ -13,35 +24,7 @@ export default function PassengerHome() {
   const [totalBookings, setTotalBookings] = useState(0);
   const [activeRides, setActiveRides] = useState(0);
   const [pendingBookings, setPendingBookings] = useState(0);
-  const [recentRides, setRecentRides] = useState([
-    {
-      id: 1,
-      date: "2026-03-19",
-      from: "University Library",
-      to: "Student Dorm A",
-      distance: 3.2,
-      amount: 320,
-      status: "Completed",
-    },
-    {
-      id: 2,
-      date: "2026-03-18",
-      from: "Campus Center",
-      to: "Main Gate",
-      distance: 2.1,
-      amount: 210,
-      status: "Completed",
-    },
-    {
-      id: 3,
-      date: "2026-03-17",
-      from: "Science Building",
-      to: "Sports Complex",
-      distance: 4.5,
-      amount: 450,
-      status: "Completed",
-    },
-  ]);
+  const [recentRides, setRecentRides] = useState([]);
   const [err, setErr] = useState("");
 
   useEffect(() => {
@@ -51,6 +34,21 @@ export default function PassengerHome() {
       .then((r) => {
         const rides = r.data.rideRequests || [];
         setTotalBookings(rides.length);
+
+        const sortedRecentRides = [...rides]
+          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+          .slice(0, 3)
+          .map((ride, index) => ({
+            id: ride._id || ride.id || index,
+            date: ride.createdAt,
+            from: ride.pickupLocation || ride.from || "Pickup location",
+            to: ride.dropLocation || ride.to || "Drop location",
+            distance: ride.distance || ride.tripDistance || null,
+            amount: rideAmount(ride),
+            status: ride.status ? ride.status.charAt(0).toUpperCase() + ride.status.slice(1) : "Completed",
+          }));
+
+        setRecentRides(sortedRecentRides);
         
         // Calculate rides by status
         const completedCount = rides.filter(ride => ride.status === "completed").length;
@@ -197,8 +195,8 @@ export default function PassengerHome() {
                           <h3 className="font-semibold text-slate-900">{ride.to}</h3>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-600">
-                          <span>📅 {new Date(ride.date).toLocaleDateString()}</span>
-                          <span>📏 {ride.distance} km</span>
+                          <span>📅 {formatRideDate(ride.date)}</span>
+                          {ride.distance ? <span>📏 {ride.distance} km</span> : null}
                         </div>
                       </div>
                       <div className="text-right">

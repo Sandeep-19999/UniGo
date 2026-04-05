@@ -110,8 +110,6 @@ export async function matchDriversForRideRequest(rideRequestId, { session } = {}
     const driverPoint = pointFromGeo(availability.currentLocation);
     const pickupDistanceKm = pickup ? haversineKm(driverPoint, pickup) : 0;
 
-    if (pickup && pickupDistanceKm > availability.maxPickupDistanceKm) continue;
-
     candidates.push({
       driver: availability.driver,
       vehicle: availability.vehicle?._id || availability.vehicle || null,
