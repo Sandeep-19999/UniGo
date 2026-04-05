@@ -24,7 +24,7 @@ function StatCard({ label, value, icon, color }) {
 // MANAGEMENT TABLE COMPONENT
 // Generic table used for passengers and drivers list views
 // =========================================================
-function ManagementTable({ title, columns, data, loading, error }) {
+function ManagementTable({ title, columns, data, loading, error, renderActions, actionsLabel = "Actions" }) {
   return (
     <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
       {/* Table title */}
@@ -55,6 +55,11 @@ function ManagementTable({ title, columns, data, loading, error }) {
                     {col}
                   </th>
                 ))}
+                {renderActions && (
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700">
+                    {actionsLabel}
+                  </th>
+                )}
               </tr>
             </thead>
 
@@ -62,14 +67,19 @@ function ManagementTable({ title, columns, data, loading, error }) {
               {data && data.length > 0 ? (
                 data.map((row, idx) => (
                   <tr key={idx} className="border-t hover:bg-slate-50">
-                    {Object.values(row).map((cell, i) => (
+                    {columns.map((col) => (
                       <td
-                        key={i}
+                        key={`${row.id || idx}-${col}`}
                         className="px-6 py-4 text-sm text-slate-700"
                       >
-                        {cell}
+                        {row[col]}
                       </td>
                     ))}
+                    {renderActions && (
+                      <td className="px-6 py-4 text-sm text-slate-700">
+                        {renderActions(row)}
+                      </td>
+                    )}
                   </tr>
                 ))
               ) : (
@@ -106,6 +116,8 @@ export default function AdminDashboard() {
   const [drivers, setDrivers] = useState([]);
   const [activeTab, setActiveTab] = useState("overview");
   const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [deletingPassengerIds, setDeletingPassengerIds] = useState([]);
 
   // =========================================================
   // STATE: LOADING FLAGS
@@ -163,10 +175,11 @@ export default function AdminDashboard() {
         .get("/admin/passengers")
         .then((res) => {
           const passengerData = res.data.passengers.map((p) => ({
+            id: p._id,
             Name: p.name,
             Email: p.email,
             Phone: p.phone || "N/A",
-            Location: p.location || "N/A",
+            Location: p.city || "N/A",
             "Joined Date": new Date(p.createdAt).toLocaleDateString()
           }));
 
@@ -184,6 +197,31 @@ export default function AdminDashboard() {
         });
     }
   }, [activeTab]);
+
+  function handleDeletePassenger(passenger) {
+    const confirmed = window.confirm("Are you sure you want to delete this passenger?");
+    if (!confirmed) return;
+
+    setDeletingPassengerIds((prev) => [...prev, passenger.id]);
+    setSuccessMessage("");
+    setErrorMessage("");
+
+    api
+      .delete(`/admin/users/${passenger.id}`)
+      .then(() => {
+        setPassengers((prev) => prev.filter((p) => p.id !== passenger.id));
+        setSuccessMessage("Passenger deleted successfully");
+        setTimeout(() => setSuccessMessage(""), 3000);
+      })
+      .catch((err) => {
+        const message = err?.response?.data?.message || "Failed to delete passenger";
+        setErrorMessage(message);
+        setTimeout(() => setErrorMessage(""), 3000);
+      })
+      .finally(() => {
+        setDeletingPassengerIds((prev) => prev.filter((id) => id !== passenger.id));
+      });
+  }
 
   // =========================================================
   // FETCH DRIVERS
@@ -328,6 +366,12 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {errorMessage && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {errorMessage}
+          </div>
+        )}
+
         {/* =====================================================
             TAB NAVIGATION
             Switches between overview, passengers, drivers, payments
@@ -426,6 +470,21 @@ export default function AdminDashboard() {
             data={passengers}
             loading={loading.passengers}
             error={errors.passengers}
+            actionsLabel="Actions"
+            renderActions={(row) => {
+              const isDeleting = deletingPassengerIds.includes(row.id);
+
+              return (
+                <button
+                  type="button"
+                  onClick={() => handleDeletePassenger(row)}
+                  disabled={isDeleting}
+                  className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
+                >
+                  {isDeleting ? "Deleting..." : "Delete"}
+                </button>
+              );
+            }}
           />
         )}
 
