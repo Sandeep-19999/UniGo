@@ -1595,6 +1595,8 @@ body {
 }
 
 .driver-v2-avatar {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1608,6 +1610,13 @@ body {
   letter-spacing: 0.02em;
   box-shadow: 0 18px 42px rgba(15, 23, 42, 0.14);
   border: 1px solid rgba(255, 255, 255, 0.92);
+}
+
+.driver-v2-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .driver-v2-earnings-pill {
@@ -2275,5 +2284,35 @@ body {
 
   .driver-v2-modal h2 {
     font-size: 24px;
+  }
+}
+
+@media (max-width: 768px) {
+  .driver-v2-topbar,
+  .driver-v2-destination-pill,
+  .driver-v2-fab-stack,
+  .driver-v2-panel {
+    display: none;
+  }
+
+  .driver-v2-map-glow {
+    background: radial-gradient(circle at center, rgba(255, 255, 255, 0) 58%, rgba(192, 211, 224, 0.18) 80%, rgba(171, 195, 211, 0.3) 100%);
+  }
+
+  .driver-v2-power-wrap {
+    left: 50%;
+    bottom: max(22px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    gap: 0;
+  }
+
+  .driver-v2-power-hint {
+    display: none;
+  }
+
+  .driver-v2-power-btn {
+    width: 112px;
+    height: 112px;
+    border-width: 6px;
   }
 }

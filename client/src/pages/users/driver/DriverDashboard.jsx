@@ -182,6 +182,8 @@ export default function DriverDashboard() {
     driverCurrentDestination: "",
     driverCurrentDestinationUpdatedAt: null
   });
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState("");
+  const [profilePhotoFailed, setProfilePhotoFailed] = useState(false);
   const [destinationDraft, setDestinationDraft] = useState("");
   const [destinationModalOpen, setDestinationModalOpen] = useState(false);
   const [destinationBusy, setDestinationBusy] = useState(false);
@@ -195,6 +197,11 @@ export default function DriverDashboard() {
   const [actionError, setActionError] = useState("");
 
   const currentDestination = profile.driverCurrentDestination || "";
+
+  useEffect(() => {
+    setProfilePhotoFailed(false);
+  }, [profilePhotoUrl]);
+
 
   const activeRide = useMemo(
     () => acceptedRequests.find((ride) => ["accepted", "started"].includes(ride.status)) || null,
@@ -269,6 +276,27 @@ export default function DriverDashboard() {
 
     return () => clearInterval(timer);
   }, [loadDashboardData]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    (async () => {
+      try {
+        const { data } = await api.get("/driver/onboarding/detail");
+        if (!isMounted) return;
+
+        const documents = Array.isArray(data?.documents) ? data.documents : [];
+        const profilePhoto = documents.find((item) => item.documentType === "profile_photo");
+        setProfilePhotoUrl(profilePhoto?.fileUrl || "");
+      } catch {
+        if (isMounted) setProfilePhotoUrl("");
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const syncLiveLocation = useCallback(async (coords) => {
     const now = Date.now();
@@ -520,7 +548,18 @@ export default function DriverDashboard() {
 
       <div className="driver-v2-topbar">
         <div className="driver-v2-avatar-pill">
-          <div className="driver-v2-avatar">{initials(user?.name || "Driver")}</div>
+          <div className="driver-v2-avatar">
+            {profilePhotoUrl && !profilePhotoFailed ? (
+              <img
+                src={profilePhotoUrl}
+                alt={user?.name || "Driver"}
+                className="driver-v2-avatar-image"
+                onError={() => setProfilePhotoFailed(true)}
+              />
+            ) : (
+              initials(user?.name || "Driver")
+            )}
+          </div>
         </div>
 
         <div className="driver-v2-earnings-pill">
