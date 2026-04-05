@@ -166,10 +166,35 @@ export async function getAdminByUserId(req, res, next) {
 export async function getAllPassengers(req, res, next) {
   try {
     const passengers = await User.find({ role: "user" })
-      .select("name email phone location createdAt")
+      .select("name email phone city createdAt")
       .sort({ createdAt: -1 });
 
     res.json({ passengers, total: passengers.length });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Delete a passenger user by ID (admin only)
+export async function deletePassengerUser(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: "Passenger not found." });
+    }
+
+    if (user.role !== "user") {
+      return res.status(400).json({ message: "Only passenger users can be deleted from this endpoint." });
+    }
+
+    await User.findByIdAndDelete(id);
+
+    res.json({
+      message: "Passenger deleted successfully",
+      deletedUserId: id
+    });
   } catch (err) {
     next(err);
   }

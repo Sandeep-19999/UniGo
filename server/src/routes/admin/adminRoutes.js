@@ -9,6 +9,7 @@ import {
   deleteAdminProfile,
   getAdminByUserId,
   getAllPassengers,
+  deletePassengerUser,
   getAllDrivers,
   getDashboardStats,
   getCashoutRequests,
@@ -34,6 +35,7 @@ router.post("/profiles/login-track", protect, authorizeRoles("admin"), updateLas
 
 // Management endpoints
 router.get("/passengers", protect, authorizeRoles("admin"), getAllPassengers);
+router.delete("/users/:id", protect, authorizeRoles("admin"), deletePassengerUser);
 router.get("/drivers", protect, authorizeRoles("admin"), getAllDrivers);
 router.get("/stats", protect, authorizeRoles("admin"), getDashboardStats);
 router.get("/cashouts", protect, authorizeRoles("admin"), getCashoutRequests);
