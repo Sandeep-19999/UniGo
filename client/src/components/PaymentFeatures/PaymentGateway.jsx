@@ -31,8 +31,16 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
   });
 
   const [loading, setLoading] = useState(false);
+  const [loadingMethods, setLoadingMethods] = useState(true);
   const [paymentResult, setPaymentResult] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [userId, setUserId] = useState("");
+  const [savedMethods, setSavedMethods] = useState([]);
+  const [selectedSavedMethodId, setSelectedSavedMethodId] = useState("");
+  const [useNewCard, setUseNewCard] = useState(false);
+  const [saveCardForFuture, setSaveCardForFuture] = useState(true);
+
+  const selectedSavedMethod = savedMethods.find((method) => method._id === selectedSavedMethodId) || null;
 
   const getObjectIdIfValid = (value) => {
     const normalized = typeof value === "string" ? value.trim() : "";
@@ -51,7 +59,11 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
       errors.paymentMethod = "Select a valid payment method.";
     }
 
-    if (cardMethods.includes(formData.paymentMethod)) {
+    const needsCardInput =
+      cardMethods.includes(formData.paymentMethod) &&
+      (useNewCard || !selectedSavedMethodId || !selectedSavedMethod);
+
+    if (needsCardInput) {
       const holderName = formData.holderName.trim();
       const cardDigits = formData.cardNumber.replace(/\D/g, "");
       const cvvDigits = formData.cvv.replace(/\D/g, "");
@@ -106,8 +118,33 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
         rideId,
         driverId,
         holderName: formData.holderName.trim(),
+        needsCardInput,
       },
     };
+  };
+
+  const fetchSavedMethods = async (resolvedUserId) => {
+    if (!resolvedUserId) {
+      setSavedMethods([]);
+      setSelectedSavedMethodId("");
+      setLoadingMethods(false);
+      return;
+    }
+
+    try {
+      const { data } = await api.get(`/payment/payment-methods/${resolvedUserId}`);
+      const methods = Array.isArray(data?.paymentMethods) ? data.paymentMethods : [];
+      setSavedMethods(methods);
+
+      const defaultMethod = methods.find((method) => method.isDefault) || methods[0] || null;
+      setSelectedSavedMethodId(defaultMethod?._id || "");
+      setUseNewCard(false);
+    } catch {
+      setSavedMethods([]);
+      setSelectedSavedMethodId("");
+    } finally {
+      setLoadingMethods(false);
+    }
   };
 
   // Prefill form with booking data if available
@@ -125,6 +162,30 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
     }
   }, [bookingData, currentRideAmount]);
 
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      try {
+        const { data: meData } = await api.get("/auth/me");
+        const resolvedUserId = meData?.user?.id || "";
+        if (!active) return;
+        setUserId(resolvedUserId);
+        await fetchSavedMethods(resolvedUserId);
+      } catch {
+        if (!active) return;
+        setUserId("");
+        setSavedMethods([]);
+        setSelectedSavedMethodId("");
+        setLoadingMethods(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     if (fieldErrors[name] || fieldErrors.context) {
@@ -141,6 +202,10 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
       });
     }
     setFormData({ ...formData, [name]: value });
+
+    if (name === "paymentMethod" && !cardMethods.includes(value)) {
+      setUseNewCard(false);
+    }
   };
 
   const handlePayment = async (e) => {
@@ -160,14 +225,36 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
     setLoading(true);
 
     try {
-      const { data: meData } = await api.get("/auth/me");
-      const userId = meData?.user?.id;
+      if (!userId) {
+        throw new Error("User not found");
+      }
+
+      if (
+        payload.needsCardInput &&
+        saveCardForFuture &&
+        cardMethods.includes(formData.paymentMethod)
+      ) {
+        await api.post("/payment/payment-methods", {
+          methodType: formData.paymentMethod,
+          cardNumber: formData.cardNumber,
+          expiryDate: formData.expiryDate,
+          cvv: formData.cvv,
+          holderName: formData.holderName,
+        });
+
+        await fetchSavedMethods(userId);
+      }
+
+      const paymentMethodToUse =
+        cardMethods.includes(formData.paymentMethod) && !payload.needsCardInput && selectedSavedMethod
+          ? selectedSavedMethod.methodType
+          : formData.paymentMethod;
 
       const { data } = await api.post("/payment/process", {
         userId,
         amount: payload.amount,
         currency: DEFAULT_CURRENCY,
-        paymentMethod: formData.paymentMethod,
+        paymentMethod: paymentMethodToUse,
         bookingId: bookingData?.bookingId || currentRide?._id || undefined,
         rideId: payload.rideId,
         driverId: payload.driverId,
@@ -197,6 +284,8 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
         cvv: "",
         holderName: "",
       });
+      setUseNewCard(false);
+      setSaveCardForFuture(true);
     } catch (error) {
       console.error("Error processing payment:", error);
       setPaymentResult({
@@ -262,7 +351,51 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
               {fieldErrors.paymentMethod ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.paymentMethod}</p> : null}
         </div>
 
-        {(formData.paymentMethod === "Credit Card" || formData.paymentMethod === "Debit Card") && (
+        {cardMethods.includes(formData.paymentMethod) && (
+          <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-800">Saved Cards</p>
+              {savedMethods.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setUseNewCard((prev) => !prev)}
+                  className="rounded-md border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700"
+                >
+                  {useNewCard ? "Use Saved Card" : "Use New Card"}
+                </button>
+              )}
+            </div>
+
+            {loadingMethods ? (
+              <p className="text-sm text-slate-600">Loading saved cards...</p>
+            ) : savedMethods.length > 0 && !useNewCard ? (
+              <>
+                <select
+                  value={selectedSavedMethodId}
+                  onChange={(e) => setSelectedSavedMethodId(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  {savedMethods.map((method) => (
+                    <option key={method._id} value={method._id}>
+                      {method.methodType} - {method.maskedCardNumber} ({method.cardBrand})
+                      {method.isDefault ? " [Default]" : ""}
+                    </option>
+                  ))}
+                </select>
+                {selectedSavedMethod ? (
+                  <p className="text-xs text-slate-600">
+                    Paying with {selectedSavedMethod.holderName} - {selectedSavedMethod.maskedCardNumber}
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-sm text-slate-600">No saved card found. Add card details below.</p>
+            )}
+          </div>
+        )}
+
+        {(formData.paymentMethod === "Credit Card" || formData.paymentMethod === "Debit Card") &&
+          (useNewCard || savedMethods.length === 0 || !selectedSavedMethodId) && (
           <>
             <div>
               <label className="mb-2 block text-sm font-semibold text-gray-700">Cardholder Name *</label>
@@ -329,6 +462,15 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
                 {fieldErrors.cvv ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.cvv}</p> : null}
               </div>
             </div>
+
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={saveCardForFuture}
+                onChange={(e) => setSaveCardForFuture(e.target.checked)}
+              />
+              Save this card for future payments
+            </label>
           </>
         )}
 
@@ -339,7 +481,11 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
           disabled={loading}
           className="w-full rounded-lg bg-purple-600 px-6 py-3 font-bold text-white transition-all hover:bg-purple-700 disabled:opacity-50"
         >
-          {loading ? "Processing..." : "Complete Payment"}
+          {loading
+            ? "Processing..."
+            : cardMethods.includes(formData.paymentMethod) && !useNewCard && selectedSavedMethod
+              ? `Pay with ${selectedSavedMethod.maskedCardNumber}`
+              : "Complete Payment"}
         </button>
       </form>
 

@@ -16,6 +16,22 @@ const userSchema = new mongoose.Schema(
     role: { type: String, enum: ["admin", "driver", "user"], default: "user" },
     phone: { type: String, trim: true, default: "" },
     city: { type: String, trim: true, default: "" },
+    paymentMethods: [
+      {
+        methodType: {
+          type: String,
+          enum: ["Credit Card", "Debit Card"],
+          required: true,
+        },
+        cardBrand: { type: String, trim: true, default: "Card" },
+        maskedCardNumber: { type: String, required: true },
+        last4: { type: String, required: true },
+        expiryDate: { type: String, required: true },
+        holderName: { type: String, required: true, trim: true },
+        isDefault: { type: Boolean, default: false },
+        createdAt: { type: Date, default: Date.now },
+      }
+    ],
     isActive: { type: Boolean, default: true },
     lastLoginAt: { type: Date, default: null }
   },

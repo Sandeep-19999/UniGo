@@ -1,8 +1,28 @@
 import { v4 as uuidv4 } from 'uuid';
 import { Payment, DriverEarnings } from '../models/Payment.js';
+import User from '../models/users/User.js';
 
 const allowedPaymentMethods = new Set(['Credit Card', 'Debit Card', 'UPI', 'Wallet', 'Net Banking']);
 const objectIdPattern = /^[a-fA-F0-9]{24}$/;
+
+function resolveRequestedUserId(req) {
+  const paramUserId = String(req.params.userId || '').trim();
+  const authUserId = String(req.user?.id || '').trim();
+
+  if (paramUserId && paramUserId !== authUserId) {
+    return null;
+  }
+
+  return authUserId;
+}
+
+function inferCardBrand(cardNumberDigits) {
+  if (/^4\d{12}(\d{3})?(\d{3})?$/.test(cardNumberDigits)) return 'Visa';
+  if (/^5[1-5]\d{14}$/.test(cardNumberDigits) || /^2(2[2-9]|[3-6]\d|7[01]|720)\d{12}$/.test(cardNumberDigits)) return 'Mastercard';
+  if (/^3[47]\d{13}$/.test(cardNumberDigits)) return 'Amex';
+  if (/^6(?:011|5\d{2})\d{12}$/.test(cardNumberDigits)) return 'Discover';
+  return 'Card';
+}
 
 // ========== PAYMENT PROCESSING FUNCTIONS ==========
 
@@ -647,11 +667,27 @@ export const withdrawEarnings = async (req, res) => {
  */
 export const getPaymentMethods = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = resolveRequestedUserId(req);
+    if (!userId) {
+      return res.status(403).json({ message: 'Forbidden: cannot access other user payment methods' });
+    }
 
-    // This would typically query a PaymentMethod model
-    // For now, returning a placeholder
-    const paymentMethods = [];
+    const user = await User.findById(userId).select('paymentMethods');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const paymentMethods = (user.paymentMethods || []).map((method) => ({
+      _id: method._id,
+      methodType: method.methodType,
+      cardBrand: method.cardBrand,
+      maskedCardNumber: method.maskedCardNumber,
+      last4: method.last4,
+      expiryDate: method.expiryDate,
+      holderName: method.holderName,
+      isDefault: Boolean(method.isDefault),
+      createdAt: method.createdAt,
+    }));
 
     res.status(200).json({
       success: true,
@@ -671,10 +707,93 @@ export const addPaymentMethod = async (req, res) => {
   try {
     const { cardNumber, expiryDate, cvv, holderName } = req.body;
     const userId = req.user.id;
+    const methodType = String(req.body.methodType || 'Credit Card').trim();
+
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized user' });
+    }
+
+    if (!['Credit Card', 'Debit Card'].includes(methodType)) {
+      return res.status(400).json({ message: 'methodType must be Credit Card or Debit Card.' });
+    }
+
+    const cardDigits = String(cardNumber || '').replace(/\D/g, '');
+    const normalizedExpiry = String(expiryDate || '').trim();
+    const normalizedHolder = String(holderName || '').trim();
+    const cvvDigits = String(cvv || '').replace(/\D/g, '');
+
+    if (!/^[A-Za-z][A-Za-z\s'.-]{1,59}$/.test(normalizedHolder)) {
+      return res.status(400).json({ message: 'Cardholder name should be 2-60 letters/spaces.' });
+    }
+
+    if (!/^\d{13,19}$/.test(cardDigits)) {
+      return res.status(400).json({ message: 'Card number must contain 13-19 digits.' });
+    }
+
+    if (!/^(0[1-9]|1[0-2])\/(\d{2})$/.test(normalizedExpiry)) {
+      return res.status(400).json({ message: 'Expiry date must be MM/YY.' });
+    }
+
+    if (!/^\d{3,4}$/.test(cvvDigits)) {
+      return res.status(400).json({ message: 'CVV must be 3 or 4 digits.' });
+    }
+
+    const [monthStr, yearStr] = normalizedExpiry.split('/');
+    const month = Number(monthStr);
+    const year = 2000 + Number(yearStr);
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    if (year < currentYear || (year === currentYear && month < currentMonth)) {
+      return res.status(400).json({ message: 'Card expiry date is in the past.' });
+    }
+
+    const user = await User.findById(userId).select('paymentMethods');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const last4 = cardDigits.slice(-4);
+    const maskedCardNumber = `**** **** **** ${last4}`;
+    const cardBrand = inferCardBrand(cardDigits);
+
+    const duplicate = (user.paymentMethods || []).find(
+      (method) =>
+        method.last4 === last4 &&
+        method.expiryDate === normalizedExpiry &&
+        String(method.holderName || '').trim().toLowerCase() === normalizedHolder.toLowerCase() &&
+        method.methodType === methodType
+    );
+
+    if (duplicate) {
+      return res.status(409).json({
+        message: 'This card is already saved.',
+        paymentMethod: duplicate,
+      });
+    }
+
+    const hasDefault = (user.paymentMethods || []).some((method) => method.isDefault);
+
+    user.paymentMethods.push({
+      methodType,
+      cardBrand,
+      maskedCardNumber,
+      last4,
+      expiryDate: normalizedExpiry,
+      holderName: normalizedHolder,
+      isDefault: !hasDefault,
+      createdAt: new Date(),
+    });
+
+    await user.save();
+
+    const createdMethod = user.paymentMethods[user.paymentMethods.length - 1];
 
     res.status(201).json({
       success: true,
       message: 'Payment method added',
+      paymentMethod: createdMethod,
     });
   } catch (error) {
     console.error('Error adding payment method:', error);
@@ -689,6 +808,25 @@ export const addPaymentMethod = async (req, res) => {
 export const deletePaymentMethod = async (req, res) => {
   try {
     const { methodId } = req.params;
+
+    const user = await User.findById(req.user.id).select('paymentMethods');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const method = user.paymentMethods.id(methodId);
+    if (!method) {
+      return res.status(404).json({ message: 'Payment method not found' });
+    }
+
+    const wasDefault = Boolean(method.isDefault);
+    method.deleteOne();
+
+    if (wasDefault && user.paymentMethods.length > 0) {
+      user.paymentMethods[0].isDefault = true;
+    }
+
+    await user.save();
 
     res.status(200).json({
       success: true,
@@ -707,6 +845,22 @@ export const deletePaymentMethod = async (req, res) => {
 export const setDefaultPaymentMethod = async (req, res) => {
   try {
     const { methodId } = req.params;
+
+    const user = await User.findById(req.user.id).select('paymentMethods');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const method = user.paymentMethods.id(methodId);
+    if (!method) {
+      return res.status(404).json({ message: 'Payment method not found' });
+    }
+
+    user.paymentMethods.forEach((item) => {
+      item.isDefault = String(item._id) === String(methodId);
+    });
+
+    await user.save();
 
     res.status(200).json({
       success: true,
