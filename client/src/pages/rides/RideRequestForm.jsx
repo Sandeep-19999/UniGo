@@ -4,6 +4,12 @@ import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/axios";
 import RideMap from "../../components/RideMap";
 
+const seatOptionsByVehicleType = {
+  bike: [1],
+  car: [1, 2, 3],
+  van: [1, 2, 3, 4, 5, 6, 7, 8],
+};
+
 export default function RideRequestForm() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -23,11 +29,27 @@ export default function RideRequestForm() {
   const [formData, setFormData] = useState({
     pickupLocation: "",
     dropLocation: "",
-    numberOfSeats: "any",
+    numberOfSeats: "1",
     vehicleType: "car",
     paymentMethod: "cash",
     notes: "",
   });
+  const [seatOptions, setSeatOptions] = useState(seatOptionsByVehicleType.car);
+
+  useEffect(() => {
+    const allowedSeats = seatOptionsByVehicleType[formData.vehicleType] || [];
+    setSeatOptions(allowedSeats);
+
+    setFormData((prev) => ({
+      ...prev,
+      numberOfSeats: allowedSeats.length > 0 ? String(allowedSeats[0]) : "",
+    }));
+
+    setErrors((prev) => ({
+      ...prev,
+      numberOfSeats: "",
+    }));
+  }, [formData.vehicleType]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -262,9 +284,15 @@ export default function RideRequestForm() {
     }
 
     // Number of Seats validation
+    const selectedSeatCount = Number(formData.numberOfSeats);
+    const allowedSeatsForVehicle = seatOptionsByVehicleType[formData.vehicleType] || [];
+
     if (!formData.numberOfSeats) {
       newErrors.numberOfSeats = "Number of seats is required";
-    } else if (!["any", "1+", "2+", "3+"].includes(formData.numberOfSeats)) {
+    } else if (
+      Number.isNaN(selectedSeatCount) ||
+      !allowedSeatsForVehicle.includes(selectedSeatCount)
+    ) {
       newErrors.numberOfSeats = "Please select a valid seat option";
     }
 
@@ -317,12 +345,7 @@ export default function RideRequestForm() {
     setLoading(true);
 
     try {
-      // Convert seat preference to number
-      let seatsValue = 1;
-      if (formData.numberOfSeats === "any") seatsValue = 0;
-      else if (formData.numberOfSeats === "1+") seatsValue = 1;
-      else if (formData.numberOfSeats === "2+") seatsValue = 2;
-      else if (formData.numberOfSeats === "3+") seatsValue = 3;
+      const seatsValue = Number(formData.numberOfSeats);
 
       const payload = {
         pickupLocation: formData.pickupLocation.trim(),
@@ -346,7 +369,7 @@ export default function RideRequestForm() {
       setFormData({
         pickupLocation: "",
         dropLocation: "",
-        numberOfSeats: "any",
+        numberOfSeats: "1",
         vehicleType: "car",
         paymentMethod: "cash",
         notes: "",
@@ -562,10 +585,11 @@ export default function RideRequestForm() {
                     : "border-gray-300 focus:ring-blue-500"
                 }`}
               >
-                <option value="any">Any</option>
-                <option value="1+">1+</option>
-                <option value="2+">2+</option>
-                <option value="3+">3+</option>
+                {seatOptions.map((seatCount) => (
+                  <option key={seatCount} value={String(seatCount)}>
+                    {seatCount}
+                  </option>
+                ))}
               </select>
               {errors.numberOfSeats && (
                 <p className="mt-1 text-sm text-red-600 font-medium">{errors.numberOfSeats}</p>
