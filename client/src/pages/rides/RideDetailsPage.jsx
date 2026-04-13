@@ -47,7 +47,7 @@ export default function RideDetailsPage() {
   const getSeatPreferenceLabel = (numberOfSeats) => {
     const parsedSeats = Number(numberOfSeats);
     if (parsedSeats === 0) return "Any";
-    if ([1, 2, 3].includes(parsedSeats)) return `${parsedSeats}+`;
+    if (Number.isInteger(parsedSeats) && parsedSeats > 0) return String(parsedSeats);
     return "N/A";
   };
 
