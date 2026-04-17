@@ -39,12 +39,24 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
   const [selectedSavedMethodId, setSelectedSavedMethodId] = useState("");
   const [useNewCard, setUseNewCard] = useState(false);
   const [saveCardForFuture, setSaveCardForFuture] = useState(true);
+  const [successPopup, setSuccessPopup] = useState(null);
 
   const selectedSavedMethod = savedMethods.find((method) => method._id === selectedSavedMethodId) || null;
 
   const getObjectIdIfValid = (value) => {
     const normalized = typeof value === "string" ? value.trim() : "";
     return /^[a-fA-F0-9]{24}$/.test(normalized) ? normalized : "";
+  };
+
+  const formatCardNumber = (value) => {
+    const digits = String(value || "").replace(/\D/g, "").slice(0, 16);
+    return digits.replace(/(.{4})/g, "$1 ").trim();
+  };
+
+  const formatExpiryDate = (value) => {
+    const digits = String(value || "").replace(/\D/g, "").slice(0, 4);
+    if (digits.length <= 2) return digits;
+    return `${digits.slice(0, 2)}/${digits.slice(2)}`;
   };
 
   const validateForm = () => {
@@ -73,8 +85,8 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
         errors.holderName = "Cardholder name should be 2-60 letters/spaces.";
       }
 
-      if (!/^\d{13,19}$/.test(cardDigits)) {
-        errors.cardNumber = "Card number must contain 13-19 digits.";
+      if (!/^\d{16}$/.test(cardDigits)) {
+        errors.cardNumber = "Card number must contain exactly 16 digits.";
       }
 
       if (!/^(0[1-9]|1[0-2])\/(\d{2})$/.test(expiry)) {
@@ -186,8 +198,25 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
     };
   }, []);
 
+  useEffect(() => {
+    if (!successPopup) return undefined;
+
+    const timer = setTimeout(() => {
+      setSuccessPopup(null);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [successPopup]);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    const nextValue =
+      name === "cardNumber"
+        ? formatCardNumber(value)
+        : name === "expiryDate"
+          ? formatExpiryDate(value)
+          : value;
+
     if (fieldErrors[name] || fieldErrors.context) {
       setFieldErrors((prev) => {
         const next = { ...prev };
@@ -201,7 +230,7 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
         return next;
       });
     }
-    setFormData({ ...formData, [name]: value });
+    setFormData({ ...formData, [name]: nextValue });
 
     if (name === "paymentMethod" && !cardMethods.includes(value)) {
       setUseNewCard(false);
@@ -276,6 +305,10 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
         transactionId: data.transactionId,
         message: `Payment initiated successfully for ${formatCurrency(formData.amount, DEFAULT_CURRENCY)}!`,
       });
+      setSuccessPopup({
+        amount: formatCurrency(formData.amount, DEFAULT_CURRENCY),
+        transactionId: data.transactionId,
+      });
       setFormData({
         amount: "",
         paymentMethod: "Credit Card",
@@ -299,6 +332,28 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
 
   return (
     <div className="space-y-6">
+      {successPopup && (
+        <div className="fixed right-4 top-20 z-50 w-full max-w-sm rounded-xl border border-emerald-300 bg-emerald-50 p-4 shadow-lg">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold text-emerald-800">Payment Successful</p>
+              <p className="mt-1 text-sm text-emerald-700">Your payment of {successPopup.amount} was completed.</p>
+              {successPopup.transactionId ? (
+                <p className="mt-2 text-xs text-emerald-700">Transaction ID: {successPopup.transactionId}</p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => setSuccessPopup(null)}
+              className="rounded-md px-2 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+              aria-label="Close success popup"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       {paymentResult && (
         <div
           className={`rounded-lg p-4 ${
@@ -422,6 +477,9 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
                 onChange={handleInputChange}
                 required
                 placeholder="1234 5678 9012 3456"
+                inputMode="numeric"
+                autoComplete="cc-number"
+                maxLength="23"
                 className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 ${
                   fieldErrors.cardNumber ? "border-rose-500 focus:ring-rose-400" : "border-gray-300 focus:ring-purple-500"
                 }`}
@@ -439,6 +497,9 @@ export default function PaymentGateway({ bookingData = {}, currentRide = null, c
                   onChange={handleInputChange}
                   required
                   placeholder="MM/YY"
+                  inputMode="numeric"
+                  autoComplete="cc-exp"
+                  maxLength="5"
                   className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 ${
                     fieldErrors.expiryDate ? "border-rose-500 focus:ring-rose-400" : "border-gray-300 focus:ring-purple-500"
                   }`}
