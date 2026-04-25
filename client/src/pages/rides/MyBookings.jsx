@@ -354,17 +354,13 @@ export default function MyBookings() {
                     <span className={`px-4 py-2 rounded-full text-sm font-semibold capitalize ${getStatusColor(booking.status || "pending")}`}>{booking.status || "pending"}</span>
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 py-4 border-y border-gray-200">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-y border-gray-200">
                     <div>
                       <p className="text-xs text-gray-500 uppercase">Vehicle Type</p>
                       <p className="font-semibold text-gray-800 capitalize">{booking.vehicleType || "Any"}</p>
                       <p className="text-xs text-gray-600 mt-2">Distance: {Number(booking.distanceKm || 0).toFixed(2)} km</p>
                       <p className="text-xs text-gray-600">Time: {Math.round(Number(booking.timeMin || 0))} min</p>
                       <p className="text-xs text-gray-700 font-semibold">Fare: Rs. {getDisplayFare(booking).toFixed(2)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase">Seats</p>
-                      <p className="font-semibold text-gray-800">{getSeatPreferenceLabel(booking.numberOfSeats)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 uppercase">Payment Method</p>
