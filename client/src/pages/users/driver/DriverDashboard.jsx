@@ -725,10 +725,6 @@ export default function DriverDashboard() {
                       <span>Estimated fare</span>
                       <strong>{formatMoney(item.rideRequest.estimatedFare ?? item.rideRequest.estimatedPrice ?? 0)}</strong>
                     </div>
-                    <div>
-                      <span>Seats</span>
-                      <strong>{Number(item.rideRequest.numberOfSeats || 0) || "Any"}</strong>
-                    </div>
                   </div>
 
                   <div className="driver-v2-actions">

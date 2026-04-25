@@ -4,12 +4,6 @@ import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/axios";
 import RideMap from "../../components/RideMap";
 
-const seatOptionsByVehicleType = {
-  bike: [1],
-  car: [1, 2, 3],
-  van: [1, 2, 3, 4, 5, 6, 7, 8],
-};
-
 export default function RideRequestForm() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -29,27 +23,10 @@ export default function RideRequestForm() {
   const [formData, setFormData] = useState({
     pickupLocation: "",
     dropLocation: "",
-    numberOfSeats: "1",
     vehicleType: "car",
     paymentMethod: "cash",
     notes: "",
   });
-  const [seatOptions, setSeatOptions] = useState(seatOptionsByVehicleType.car);
-
-  useEffect(() => {
-    const allowedSeats = seatOptionsByVehicleType[formData.vehicleType] || [];
-    setSeatOptions(allowedSeats);
-
-    setFormData((prev) => ({
-      ...prev,
-      numberOfSeats: allowedSeats.length > 0 ? String(allowedSeats[0]) : "",
-    }));
-
-    setErrors((prev) => ({
-      ...prev,
-      numberOfSeats: "",
-    }));
-  }, [formData.vehicleType]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -283,19 +260,6 @@ export default function RideRequestForm() {
       newErrors.dropLocation = "Drop location must be different from pickup location";
     }
 
-    // Number of Seats validation
-    const selectedSeatCount = Number(formData.numberOfSeats);
-    const allowedSeatsForVehicle = seatOptionsByVehicleType[formData.vehicleType] || [];
-
-    if (!formData.numberOfSeats) {
-      newErrors.numberOfSeats = "Number of seats is required";
-    } else if (
-      Number.isNaN(selectedSeatCount) ||
-      !allowedSeatsForVehicle.includes(selectedSeatCount)
-    ) {
-      newErrors.numberOfSeats = "Please select a valid seat option";
-    }
-
     // Map Coordinates validation
     if (!pickupCoords) {
       newErrors.pickupCoords = "Pickup coordinates are required";
@@ -345,13 +309,10 @@ export default function RideRequestForm() {
     setLoading(true);
 
     try {
-      const seatsValue = Number(formData.numberOfSeats);
-
       const payload = {
         pickupLocation: formData.pickupLocation.trim(),
         dropLocation: formData.dropLocation.trim(),
-        seats: seatsValue,
-        numberOfSeats: seatsValue,
+        numberOfSeats: 1,
         vehicleType: formData.vehicleType,
         paymentMethod: formData.paymentMethod,
         notes: formData.notes.trim(),
@@ -369,7 +330,6 @@ export default function RideRequestForm() {
       setFormData({
         pickupLocation: "",
         dropLocation: "",
-        numberOfSeats: "1",
         vehicleType: "car",
         paymentMethod: "cash",
         notes: "",
@@ -567,33 +527,6 @@ export default function RideRequestForm() {
                   Estimated Fare: Rs. {routeInfo ? estimatedFare.toFixed(2) : "0.00"}
                 </p>
               </div>
-            </div>
-
-            {/* Number of Seats Selection */}
-            <div>
-              <label htmlFor="numberOfSeats" className="block text-sm font-semibold text-gray-700 mb-2">
-                Number of Seats <span className="text-red-600">*</span>
-              </label>
-              <select
-                id="numberOfSeats"
-                name="numberOfSeats"
-                value={formData.numberOfSeats}
-                onChange={handleChange}
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent ${
-                  errors.numberOfSeats
-                    ? "border-red-500 focus:ring-red-500 bg-red-50"
-                    : "border-gray-300 focus:ring-blue-500"
-                }`}
-              >
-                {seatOptions.map((seatCount) => (
-                  <option key={seatCount} value={String(seatCount)}>
-                    {seatCount}
-                  </option>
-                ))}
-              </select>
-              {errors.numberOfSeats && (
-                <p className="mt-1 text-sm text-red-600 font-medium">{errors.numberOfSeats}</p>
-              )}
             </div>
 
             {/* Payment Method */}
