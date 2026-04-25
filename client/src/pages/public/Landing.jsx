@@ -2,11 +2,11 @@ import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useEffect, useRef, useState } from "react";
 
-import car1 from "/Users/maleeshasandeep/Desktop/UniGo project 2/UniGo/client/src/assets/cars/ca1.jpg"; 
-import car2 from "/Users/maleeshasandeep/Desktop/UniGo project 2/UniGo/client/src/assets/cars/car2.jpg"; 
-import car3 from "/Users/maleeshasandeep/Desktop/UniGo project 2/UniGo/client/src/assets/cars/car3.jpg"; 
-import car4 from "/Users/maleeshasandeep/Desktop/UniGo project 2/UniGo/client/src/assets/cars/car4.jpg"; 
-import car5 from "/Users/maleeshasandeep/Desktop/UniGo project 2/UniGo/client/src/assets/cars/car5.jpg"; 
+import car1 from "../../assets/cars/car1.jpg"; 
+import car2 from "../../assets/cars/car2.jpg"; 
+import car3 from "../../assets/cars/car3.jpg"; 
+import car4 from "../../assets/cars/car4.jpg"; 
+import car5 from "../../assets/cars/car5.jpg"; 
 
 /* ─── Car carousel data ───────────────────────────────────────────── */
 const CARS = [
